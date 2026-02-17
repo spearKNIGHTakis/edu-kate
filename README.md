@@ -1,70 +1,131 @@
-# Getting Started with Create React App
+# EduManage Pro 🎓
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A full-featured school management system built with **React 18** and **Supabase**.
 
-## Available Scripts
+## Features
 
-In the project directory, you can run:
+- 📊 Dashboard with live stats and charts
+- 👨‍🎓 Student management (CRUD)
+- 👩‍🏫 Teacher management (CRUD)
+- ✅ Daily attendance tracking
+- 📈 Grades & assessments
+- 💰 Fee management & payment tracking
+- 📢 Announcements system
 
-### `npm start`
+---
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## 1. Local Development
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### Prerequisites
+- Node.js 18+
+- npm 9+
+- A [Supabase](https://supabase.com) account (free tier works)
 
-### `npm test`
+### Install
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```bash
+npm install
+```
 
-### `npm run build`
+### Configure environment
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+```bash
+cp .env.example .env
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Edit `.env` with your real Supabase credentials:
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```
+REACT_APP_SUPABASE_URL=https://your-project.supabase.co
+REACT_APP_SUPABASE_ANON_KEY=eyJhbGci...
+```
 
-### `npm run eject`
+> Find these in your Supabase project: **Settings → API**
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### Set up database
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+1. Open your Supabase project → **SQL Editor**
+2. Copy the SQL from the **Settings** page inside the app (or from the schema in `src/App.js`)
+3. Run it — this creates all 6 tables with RLS policies
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+### Start the app
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+```bash
+npm start
+```
 
-## Learn More
+App runs at [http://localhost:3000](http://localhost:3000)
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+---
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## 2. Push to GitHub
 
-### Code Splitting
+```bash
+# Initialize git (if not already done)
+git init
+git add .
+git commit -m "Initial commit: EduManage Pro"
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+# Create repo on github.com, then:
+git remote add origin https://github.com/YOUR_USERNAME/edumanage-pro.git
+git branch -M main
+git push -u origin main
+```
 
-### Analyzing the Bundle Size
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## 3. Deploy to Vercel
 
-### Making a Progressive Web App
+### Option A — Vercel CLI
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+```bash
+npm install -g vercel
+vercel login
+vercel
 
-### Advanced Configuration
+# Follow prompts:
+# Framework: Create React App
+# Build command: npm run build
+# Output directory: build
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+### Option B — Vercel Dashboard (recommended)
 
-### Deployment
+1. Go to [vercel.com](https://vercel.com) → **Add New Project**
+2. Import your GitHub repo
+3. Vercel auto-detects Create React App — click **Deploy**
+4. After deploy, go to **Settings → Environment Variables** and add:
+   - `REACT_APP_SUPABASE_URL` = your Supabase URL
+   - `REACT_APP_SUPABASE_ANON_KEY` = your anon key
+5. Go to **Deployments → Redeploy** to apply the env vars
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+Your app will be live at `https://your-project.vercel.app` 🚀
 
-### `npm run build` fails to minify
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+## Project Structure
+
+```
+edumanage-pro/
+├── public/
+│   └── index.html
+├── src/
+│   ├── App.js        # All components & logic
+│   ├── App.css       # All styles
+│   └── index.js      # React entry point
+├── .env.example      # Env var template
+├── .gitignore
+├── vercel.json       # SPA routing for Vercel
+├── package.json
+└── README.md
+```
+
+## Tech Stack
+
+| Layer     | Technology                  |
+|-----------|-----------------------------|
+| Frontend  | React 18                    |
+| Database  | Supabase (PostgreSQL)       |
+| Auth      | Supabase (extendable)       |
+| Hosting   | Vercel                      |
+| Styles    | Pure CSS (no UI library)    |
