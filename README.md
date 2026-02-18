@@ -129,3 +129,9 @@ edumanage-pro/
 | Auth      | Supabase (extendable)       |
 | Hosting   | Vercel                      |
 | Styles    | Pure CSS (no UI library)    |
+
+
+
+
+Demo credentials:
+RoleEmailPasswordAdminadmin@school.eduadmin123//Teacherjames@school.eduteacher123

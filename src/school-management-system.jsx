@@ -1123,7 +1123,7 @@ function Students({ students, onAdd, onEdit, onDelete }) {
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: "", email: "", grade: "9", class: "", dob: "", phone: "", guardian_name: "", guardian_phone: "", address: "", status: "active" });
+  const [form, setForm] = useState({ name: "", email: "", Basic: "9", class: "", dob: "", phone: "", guardian_name: "", guardian_phone: "", address: "", status: "active" });
 
   const filtered = students.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -1133,7 +1133,7 @@ function Students({ students, onAdd, onEdit, onDelete }) {
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ name: "", email: "", grade: "9", class: "", dob: "", phone: "", guardian_name: "", guardian_phone: "", address: "", status: "active" });
+    setForm({ name: "", email: "", Basic: "9", class: "", dob: "", phone: "", guardian_name: "", guardian_phone: "", address: "", status: "active" });
     setShowModal(true);
   };
 
@@ -1166,7 +1166,7 @@ function Students({ students, onAdd, onEdit, onDelete }) {
           <thead>
             <tr>
               <th>Name</th>
-              <th>Grade / Class</th>
+              <th>Basic / Class</th>
               <th>Email</th>
               <th>Guardian</th>
               <th>Enrolled</th>
@@ -1191,7 +1191,7 @@ function Students({ students, onAdd, onEdit, onDelete }) {
                 <td>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button className="btn btn-secondary btn-sm" onClick={() => openEdit(s)}>Edit</button>
-                    <button className="btn btn-danger btn-sm" onClick={() => onDelete(s.id)}>Del</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => onDelete(s.id)}>Delete</button>
                   </div>
                 </td>
               </tr>
