@@ -3,8 +3,8 @@ import { useState, useEffect, createContext, useContext } from "react";
 // ============================================================
 // SUPABASE CONFIG - Replace with your actual Supabase credentials
 // ============================================================
-const SUPABASE_URL = "https://gudgutgvpruspmlyqtcg.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_Y7mKv0Od-Ii33c-AdVS1wA_I5bsQMse";
+const SUPABASE_URL = "https://ayihorjyxkjpfnevxwfw.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5aWhvcmp5eGtqcGZuZXZ4d2Z3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MTUwNjksImV4cCI6MjA4Njk5MTA2OX0.clAs2Gyna8mYKjJBNVDgwfUQSKNBCvsjz6Jh3TnupOo";
 
 // Simple Supabase client (no SDK needed)
 const supabase = {
