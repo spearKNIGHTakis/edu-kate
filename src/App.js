@@ -1454,7 +1454,7 @@ function AppShell({user,onLogout}) {
         <div className="sidebar-header">
           <SchoolLogo size={36} style={{border:'2px solid rgba(255,255,255,.25)',background:'#fff'}}/>
           <div className="sidebar-logo-text">
-            <h1>EduManage Pro</h1>
+            <h1>Brighter Life Mission School</h1>
             <p>School Management</p>
           </div>
           {/* Close button — visible on mobile */}
