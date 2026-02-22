@@ -16,6 +16,16 @@ import './App.css';
 // ─── SUPABASE ───────────────────────────────
 const SUPABASE_URL      = process.env.REACT_APP_SUPABASE_URL      || '';
 const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
+
+console.log('Raw env vars:', {
+  REACT_APP_SUPABASE_URL: process.env.REACT_APP_SUPABASE_URL,
+  REACT_APP_SUPABASE_ANON_KEY: process.env.REACT_APP_SUPABASE_ANON_KEY ? 'defined' : 'undefined'
+});
+console.log('Processed vars:', {
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY: SUPABASE_ANON_KEY ? 'defined' : 'undefined'
+});
+
 const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const IS_DEMO = !supabase;
