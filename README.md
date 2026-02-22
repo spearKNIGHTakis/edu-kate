@@ -51,7 +51,7 @@ REACT_APP_SUPABASE_ANON_KEY=eyJhbGci...
 ### Start the app
 
 ```bash
-npm install
+npm install 
 ```
 
 App runs at [http://localhost:3000](http://localhost:3000)
