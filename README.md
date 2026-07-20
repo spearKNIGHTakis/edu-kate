@@ -38,11 +38,13 @@ cp .env.example .env
 If you prefer to create it manually, add these variables to `.env`:
 
 ```
+REACT_APP_ENABLE_LIVE_SUPABASE=true
 REACT_APP_SUPABASE_URL=https://your-project.supabase.co
 REACT_APP_SUPABASE_ANON_KEY=eyJhbGci...
 ```
 
 > Find these in your Supabase project: **Settings → API**
+> Leave `REACT_APP_ENABLE_LIVE_SUPABASE=false` (or unset) if you want the app to stay in demo mode.
 
 ### Set up database
 
@@ -97,6 +99,7 @@ vercel
 2. Import your GitHub repo
 3. Vercel auto-detects Create React App — click **Deploy**
 4. After deploy, go to **Settings → Environment Variables** and add:
+   - `REACT_APP_ENABLE_LIVE_SUPABASE` = `true`
    - `REACT_APP_SUPABASE_URL` = your Supabase URL
    - `REACT_APP_SUPABASE_ANON_KEY` = your anon key
 5. Go to **Deployments → Redeploy** to apply the env vars
