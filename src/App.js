@@ -240,9 +240,51 @@ function Modal({title,icon,onClose,onSave,children,lg}) {
 }
 
 // ─── EXPORT MODAL ───────────────────────────
-function ExportModal({onClose,dataLabel}) {
+function ExportModal({onClose,dataLabel,rows=[]}) {
   const toast=useToast();
-  const exp=fmt=>{toast(`${dataLabel} exported as ${fmt}`,'success');onClose();};
+
+  const stringifyCsv = (items) => {
+    if (!items.length) return '';
+    const headers = Object.keys(items[0]);
+    const escape = value => {
+      const stringValue = value == null ? '' : String(value);
+      return /[",\n]/.test(stringValue) ? `"${stringValue.replace(/"/g,'""')}"` : stringValue;
+    };
+    const lines = [headers.join(',')];
+    items.forEach(item => lines.push(headers.map(h => escape(item[h])).join(',')));
+    return lines.join('\n');
+  };
+
+  const downloadFile = (fmt) => {
+    if (fmt !== 'CSV' || !rows.length) {
+      toast(`${dataLabel} exported as ${fmt}`,'success');
+      onClose();
+      return;
+    }
+
+    const csv = stringifyCsv(rows);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${dataLabel.toLowerCase().replace(/\s+/g,'-') || 'export'}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast(`${dataLabel} exported as CSV`,'success');
+    onClose();
+  };
+
+  const exp=fmt=>{
+    if (fmt === 'CSV') {
+      downloadFile(fmt);
+      return;
+    }
+    toast(`${dataLabel} exported as ${fmt}`,'success');
+    onClose();
+  };
+
   return (
     <Modal title="Export Data" icon={faDownload} onClose={onClose}>
       <p style={{fontSize:13,color:'var(--gray500)',marginBottom:14}}>Export <strong>{dataLabel}</strong> as:</p>
@@ -1029,7 +1071,7 @@ function Attendance({user,students,attendance,onRecord}) {
 // ═══════════════════════════════════════════
 const BLANK_GRD={student_id:'',subject:'',assignment:'',score:'',max_score:100,term:'Term 1 2026',date:dateToday(),class:''};
 
-function Grades({user,students,grades,onAdd}) {
+function Grades({user,students,grades,onAdd,onDelete}) {
   const [modal,setModal]=useState(false);
   const [expModal,setExpModal]=useState(false);
   const [fStu,setFStu]=useState('');
@@ -1041,6 +1083,17 @@ function Grades({user,students,grades,onAdd}) {
   const lvlClasses=fLvl?(SCHOOL_LEVELS.find(l=>l.label===fLvl)?.classes||[]):ALL_CLASSES;
   const formSubs=form.class?getSubjectsForClass(form.class):ALL_SUBJECTS;
   const list=grades.filter(g=>(!fStu||g.student_id===fStu)&&(!fCls||g.class===fCls)&&(!fLvl||getLevelForClass(g.class)===fLvl));
+  const exportRows=list.map(g=>({
+    Student: students.find(st=>st.id===g.student_id)?.name || 'Unknown',
+    Class: g.class,
+    Subject: g.subject,
+    Assessment: g.assignment,
+    Score: `${g.score}/${g.max_score}`,
+    Percentage: `${Math.round((g.score/g.max_score)*100)}%`,
+    Grade: letterGrade(g.score,g.max_score),
+    Term: g.term,
+    Date: g.date,
+  }));
 
   const save=()=>{
     if(!form.student_id||!form.subject||!form.score) return alert('Fill all required fields');
@@ -1049,6 +1102,7 @@ function Grades({user,students,grades,onAdd}) {
     setModal(false);
     setForm({...BLANK_GRD,subject:user.subject||'',class:user.class||''});
   };
+  const del=id=>{ if(window.confirm('Delete this grade entry?')) onDelete(id); };
 
   return (
     <div className="anim-up">
@@ -1074,7 +1128,7 @@ function Grades({user,students,grades,onAdd}) {
 
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Student</th><th>Class</th><th>Subject</th><th>Assessment</th><th>Score</th><th>%</th><th>Grade</th><th>Term</th></tr></thead>
+          <thead><tr><th>Student</th><th>Class</th><th>Subject</th><th>Assessment</th><th>Score</th><th>%</th><th>Grade</th><th>Term</th><th>Delete</th></tr></thead>
           <tbody>
             {list.map(g=>{
               const s=students.find(st=>st.id===g.student_id);
@@ -1093,6 +1147,7 @@ function Grades({user,students,grades,onAdd}) {
                   </div></td>
                   <td><span className={`grade-pill grade-${l}`}>{l}</span></td>
                   <td style={{fontSize:11,color:'var(--gray400)'}}>{g.term}</td>
+                  <td><button className="btn btn-danger btn-sm" onClick={()=>del(g.id)}><FontAwesomeIcon icon={faTrash}/></button></td>
                 </tr>
               );
             })}
@@ -1135,7 +1190,7 @@ function Grades({user,students,grades,onAdd}) {
           )}
         </Modal>
       )}
-      {expModal&&<ExportModal onClose={()=>setExpModal(false)} dataLabel="Grades Report"/>}
+      {expModal&&<ExportModal onClose={()=>setExpModal(false)} dataLabel="Grades Report" rows={exportRows}/>} 
     </div>
   );
 }
@@ -1145,7 +1200,7 @@ function Grades({user,students,grades,onAdd}) {
 // ═══════════════════════════════════════════
 const BLANK_FEE={student_id:'',amount:'',fee_type:'Tuition',due_date:'',status:'pending',term:'Term 1 2026'};
 
-function Fees({students,fees,onAdd,onUpdate}) {
+function Fees({students,fees,onAdd,onUpdate,onDelete}) {
   const [tab,setTab]=useState('all');
   const [modal,setModal]=useState(false);
   const [smsModal,setSmsModal]=useState(false);
@@ -1158,6 +1213,15 @@ function Fees({students,fees,onAdd,onUpdate}) {
     const s=students.find(st=>st.id===f.student_id);
     return(tab==='all'||f.status===tab)&&(!fCls||s?.class===fCls);
   });
+  const exportRows=list.map(f=>({
+    Student: students.find(st=>st.id===f.student_id)?.name || 'Unknown',
+    Class: students.find(st=>st.id===f.student_id)?.class || '—',
+    FeeType: f.fee_type,
+    Amount: fmtMoney(f.amount),
+    DueDate: fmtDate(f.due_date),
+    PaidDate: fmtDate(f.paid_date),
+    Status: f.status,
+  }));
 
   const collected =fees.filter(f=>f.status==='paid').reduce((s,f)=>s+Number(f.amount),0);
   const pending   =fees.filter(f=>f.status==='pending').reduce((s,f)=>s+Number(f.amount),0);
@@ -1165,6 +1229,7 @@ function Fees({students,fees,onAdd,onUpdate}) {
 
   const save    =()=>{if(!form.student_id||!form.amount)return alert('Fill required fields');onAdd(form);setModal(false);setForm(BLANK_FEE);};
   const markPaid=id=>onUpdate(id,{status:'paid',paid_date:dateToday()});
+  const del=id=>{ if(window.confirm('Delete this fee record?')) onDelete(id); };
 
   return (
     <div className="anim-up">
@@ -1196,7 +1261,7 @@ function Fees({students,fees,onAdd,onUpdate}) {
 
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Student</th><th>Class</th><th>Fee Type</th><th>Amount (GH₵)</th><th>Due Date</th><th>Paid Date</th><th>Status</th><th>Action</th></tr></thead>
+          <thead><tr><th>Student</th><th>Class</th><th>Fee Type</th><th>Amount (GH₵)</th><th>Due Date</th><th>Paid Date</th><th>Status</th><th>Action</th><th>Delete</th></tr></thead>
           <tbody>
             {list.map(f=>{
               const s=students.find(st=>st.id===f.student_id);
@@ -1210,6 +1275,7 @@ function Fees({students,fees,onAdd,onUpdate}) {
                   <td style={{fontSize:12,color:'var(--gray400)'}}>{fmtDate(f.paid_date)}</td>
                   <td><span className={`badge badge-${f.status==='paid'?'green':f.status==='overdue'?'red':'yellow'}`}>{f.status}</span></td>
                   <td>{f.status!=='paid'&&<button className="btn btn-success btn-sm" onClick={()=>markPaid(f.id)}><FontAwesomeIcon icon={faCheck}/> Paid</button>}</td>
+                  <td><button className="btn btn-danger btn-sm" onClick={()=>del(f.id)}><FontAwesomeIcon icon={faTrash}/></button></td>
                 </tr>
               );
             })}
@@ -1244,7 +1310,7 @@ function Fees({students,fees,onAdd,onUpdate}) {
         </Modal>
       )}
       {smsModal&&<SmsModal onClose={()=>setSmsModal(false)} students={students} fees={fees}/>}
-      {expModal &&<ExportModal onClose={()=>setExpModal(false)} dataLabel="Fee Records"/>}
+      {expModal &&<ExportModal onClose={()=>setExpModal(false)} dataLabel="Fee Records" rows={exportRows}/>}
     </div>
   );
 }
@@ -1536,8 +1602,8 @@ function AppShell({user,onLogout}) {
           {page==='students'     &&<Students      students={stu.data} onAdd={stu.add} onEdit={stu.update} onDelete={stu.remove}/>}
           {page==='teachers'     &&<Teachers      teachers={tch.data} onAdd={tch.add} onEdit={tch.update} onDelete={tch.remove}/>}
           {page==='attendance'   &&<Attendance    user={user} students={stu.data} attendance={att.data} onRecord={att.upsertAtt}/>}
-          {page==='grades'       &&<Grades        user={user} students={stu.data} grades={grd.data} onAdd={grd.add}/>}
-          {page==='fees'         &&<Fees          students={stu.data} fees={fee.data} onAdd={fee.add} onUpdate={fee.update}/>}
+          {page==='grades'       &&<Grades        user={user} students={stu.data} grades={grd.data} onAdd={grd.add} onDelete={grd.remove}/>}
+          {page==='fees'         &&<Fees          students={stu.data} fees={fee.data} onAdd={fee.add} onUpdate={fee.update} onDelete={fee.remove}/>}
           {page==='announcements'&&<Announcements user={user} announcements={ann.data} onAdd={ann.add} onDelete={ann.remove}/>}
           {page==='settings'     &&<Settings/>}
         </div>
