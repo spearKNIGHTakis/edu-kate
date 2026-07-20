@@ -12,22 +12,16 @@ import {
   faEnvelope, faBell
 } from '@fortawesome/free-solid-svg-icons';
 import './App.css';
+import { shouldUseLiveSupabase } from './supabaseConfig';
 
 // ─── SUPABASE ───────────────────────────────
 const SUPABASE_URL      = process.env.REACT_APP_SUPABASE_URL      || '';
 const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
+const USE_LIVE_SUPABASE = shouldUseLiveSupabase(process.env);
 
-console.log('Raw env vars:', {
-  REACT_APP_SUPABASE_URL: process.env.REACT_APP_SUPABASE_URL,
-  REACT_APP_SUPABASE_ANON_KEY: process.env.REACT_APP_SUPABASE_ANON_KEY ? 'defined' : 'undefined'
-});
-console.log('Processed vars:', {
-  SUPABASE_URL,
-  SUPABASE_ANON_KEY: SUPABASE_ANON_KEY ? 'defined' : 'undefined'
-});
-
-const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
-  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const supabase = USE_LIVE_SUPABASE && SUPABASE_URL && SUPABASE_ANON_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 const IS_DEMO = !supabase;
 
 // ─── CONTEXT ────────────────────────────────
@@ -134,10 +128,28 @@ function useTable(table, mockData) {
   const [data, setData] = useState(mockData);
   const toast = useToast();
   useEffect(() => {
-    if (IS_DEMO) return;
-    supabase.from(table).select('*').order('created_at',{ascending:false})
-      .then(({data:rows,error}) => { if (!error && rows) setData(rows); });
-  }, [table]);
+    if (IS_DEMO || !supabase) return;
+
+    let isMounted = true;
+    const loadData = async () => {
+      try {
+        const { data: rows, error } = await supabase.from(table).select('*').order('created_at',{ascending:false});
+        if (!isMounted) return;
+        if (!error && rows) setData(rows);
+        else {
+          console.warn(`[${table}] live fetch failed; using demo data`, error?.message || 'unknown error');
+          setData(mockData);
+        }
+      } catch (err) {
+        if (!isMounted) return;
+        console.warn(`[${table}] live fetch failed; using demo data`, err);
+        setData(mockData);
+      }
+    };
+
+    loadData();
+    return () => { isMounted = false; };
+  }, [table, mockData]);
   const add = useCallback(async row => {
     if (IS_DEMO) { setData(p=>[...p,{...row,id:uid(),created_at:new Date().toISOString()}]); toast('Added','success'); return; }
     const {data:ins,error} = await supabase.from(table).insert(row).select();
@@ -637,7 +649,7 @@ function Dashboard({user,students,teachers,attendance,grades,fees,announcements}
       {IS_DEMO&&(
         <div className="alert alert-info">
           <FontAwesomeIcon icon={faInfoCircle}/>
-          <span><strong>Demo mode</strong> — Set <code>REACT_APP_SUPABASE_URL</code> + <code>REACT_APP_SUPABASE_ANON_KEY</code> in <code>.env</code> for live data.</span>
+          <span><strong>Demo mode</strong> — Set <code>REACT_APP_ENABLE_LIVE_SUPABASE=true</code> and provide valid <code>REACT_APP_SUPABASE_URL</code> + <code>REACT_APP_SUPABASE_ANON_KEY</code> in <code>.env</code> to enable live data.</span>
         </div>
       )}
       <div className="stats-grid">
