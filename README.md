@@ -29,11 +29,13 @@ npm install
 
 ### Configure environment
 
+If there is no `.env` file yet, create one from the sample template:
+
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your real Supabase credentials:
+If you prefer to create it manually, add these variables to `.env`:
 
 ```
 REACT_APP_SUPABASE_URL=https://your-project.supabase.co
@@ -51,7 +53,7 @@ REACT_APP_SUPABASE_ANON_KEY=eyJhbGci...
 ### Start the app
 
 ```bash
-npm install 
+npm start
 ```
 
 App runs at [http://localhost:3000](http://localhost:3000)
