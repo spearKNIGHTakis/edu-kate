@@ -135,15 +135,14 @@ function useTable(table, mockData) {
       try {
         const { data: rows, error } = await supabase.from(table).select('*').order('created_at',{ascending:false});
         if (!isMounted) return;
-        if (!error && rows) setData(rows);
-        else {
-          console.warn(`[${table}] live fetch failed; using demo data`, error?.message || 'unknown error');
-          setData(mockData);
+        if (!error && rows) {
+          setData(rows);
+          return;
         }
+        console.warn(`[${table}] live fetch failed; keeping the existing data`, error?.message || 'unknown error');
       } catch (err) {
         if (!isMounted) return;
-        console.warn(`[${table}] live fetch failed; using demo data`, err);
-        setData(mockData);
+        console.warn(`[${table}] live fetch failed`, err);
       }
     };
 

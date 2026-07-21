@@ -12,7 +12,17 @@ describe('shouldUseLiveSupabase', () => {
     expect(shouldUseLiveSupabase({
       REACT_APP_SUPABASE_URL: 'https://example.supabase.co',
       REACT_APP_SUPABASE_ANON_KEY: 'anon-key',
-      REACT_APP_ENABLE_LIVE_SUPABASE: 'true'
+      REACT_APP_ENABLE_LIVE_SUPABASE: 'true',
+      NODE_ENV: 'development'
+    })).toBe(true);
+  });
+
+  it('returns true in production when live Supabase is enabled', () => {
+    expect(shouldUseLiveSupabase({
+      REACT_APP_SUPABASE_URL: 'https://example.supabase.co',
+      REACT_APP_SUPABASE_ANON_KEY: 'anon-key',
+      REACT_APP_ENABLE_LIVE_SUPABASE: 'true',
+      NODE_ENV: 'production'
     })).toBe(true);
   });
 });
