@@ -12,17 +12,16 @@ import {
   faEnvelope, faBell
 } from '@fortawesome/free-solid-svg-icons';
 import './App.css';
-import { shouldUseLiveSupabase } from './supabaseConfig';
+import { shouldUseLiveSupabase, getSupabaseConfig } from './supabaseConfig';
 
 // ─── SUPABASE ───────────────────────────────
-const SUPABASE_URL      = process.env.REACT_APP_SUPABASE_URL      || '';
-const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
+const { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY } = getSupabaseConfig(process.env);
 const USE_LIVE_SUPABASE = shouldUseLiveSupabase(process.env);
 
 const supabase = USE_LIVE_SUPABASE && SUPABASE_URL && SUPABASE_ANON_KEY
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
-const IS_DEMO = !supabase;
+const IS_CONNECTED = Boolean(supabase);
 
 // ─── CONTEXT ────────────────────────────────
 const ToastCtx = createContext(() => {});
@@ -60,75 +59,17 @@ const initials   = n  => n ? n.split(' ').map(w=>w[0]).join('').slice(0,2).toUpp
 const dateToday  = () => new Date().toISOString().split('T')[0];
 const letterGrade= (s,m)=>{ const p=(s/m)*100; if(p>=80)return'A';if(p>=70)return'B';if(p>=60)return'C';if(p>=50)return'D';return'F'; };
 
-// ─── MOCK DATA ───────────────────────────────
-const MOCK = {
-  users: [
-    {id:'u1',name:'Mr. Kwame Asante',  email:'admin@school.edu',  password:'admin123',  role:'admin',  subject:null,             class:null,       phone:'0244-000001'},
-    {id:'u2',name:'Mrs. Abena Mensah', email:'abena@school.edu',  password:'teacher123',role:'teacher',subject:'Mathematics',     class:'Primary 5',phone:'0244-000002'},
-    {id:'u3',name:'Mr. Kofi Boateng',  email:'kofi@school.edu',   password:'teacher123',role:'teacher',subject:'English Language',class:'JHS 2',    phone:'0244-000003'},
-  ],
-  students: [
-    {id:'s1', name:'Ama Owusu',       email:'ama@sch.edu',   class:'Primary 5',dob:'2014-03-15',guardian_name:'Mr. Owusu',   guardian_phone:'0244-201',status:'active'},
-    {id:'s2', name:'Kweku Mensah',    email:'kweku@sch.edu', class:'Primary 5',dob:'2014-07-22',guardian_name:'Mrs. Mensah', guardian_phone:'0244-202',status:'active'},
-    {id:'s3', name:'Adjoa Agyeman',   email:'adjoa@sch.edu', class:'JHS 2',    dob:'2011-11-08',guardian_name:'Mr. Agyeman', guardian_phone:'0244-203',status:'active'},
-    {id:'s4', name:'Yaw Darko',       email:'yaw@sch.edu',   class:'JHS 1',    dob:'2012-05-30',guardian_name:'Mrs. Darko',  guardian_phone:'0244-204',status:'active'},
-    {id:'s5', name:'Akosua Frimpong', email:'akos@sch.edu',  class:'JHS 3',    dob:'2010-01-12',guardian_name:'Mr. Frimpong',guardian_phone:'0244-205',status:'active'},
-    {id:'s6', name:'Kofi Amoah',      email:'kof2@sch.edu',  class:'Primary 3',dob:'2016-09-03',guardian_name:'Mrs. Amoah',  guardian_phone:'0244-206',status:'inactive'},
-    {id:'s7', name:'Abena Asare',     email:'aben@sch.edu',  class:'KG 2',     dob:'2019-02-18',guardian_name:'Mr. Asare',   guardian_phone:'0244-207',status:'active'},
-    {id:'s8', name:'Yaa Boateng',     email:'yaa@sch.edu',   class:'Nursery 1',dob:'2021-11-05',guardian_name:'Mrs. Boateng',guardian_phone:'0244-208',status:'active'},
-    {id:'s9', name:'Kwame Appiah',    email:'kwa@sch.edu',   class:'Primary 1',dob:'2018-04-20',guardian_name:'Mr. Appiah',  guardian_phone:'0244-209',status:'active'},
-    {id:'s10',name:'Efua Quansah',    email:'efu@sch.edu',   class:'JHS 2',    dob:'2011-08-14',guardian_name:'Mrs. Quansah',guardian_phone:'0244-210',status:'active'},
-  ],
-  teachers: [
-    {id:'t1',name:'Mrs. Abena Mensah',email:'abena@school.edu', subject:'Mathematics',       phone:'0244-000002',qualification:'BSc Mathematics Education',experience_years:8, status:'active',class:'Primary 5'},
-    {id:'t2',name:'Mr. Kofi Boateng', email:'kofi@school.edu',  subject:'English Language',  phone:'0244-000003',qualification:'BA English & Linguistics',  experience_years:12,status:'active',class:'JHS 2'},
-    {id:'t3',name:'Ms. Akua Amponsah',email:'akua@school.edu',  subject:'Integrated Science',phone:'0244-000004',qualification:'BSc Science Education',     experience_years:5, status:'active',class:'JHS 1'},
-    {id:'t4',name:'Mr. Yaw Asante',   email:'yaw.t@school.edu', subject:'Social Studies',    phone:'0244-000005',qualification:'BA Social Studies',          experience_years:10,status:'active',class:'JHS 3'},
-    {id:'t5',name:'Mrs. Ama Boadu',   email:'ama.t@school.edu', subject:'Ghanaian Language', phone:'0244-000006',qualification:'Diploma in Education',       experience_years:7, status:'active',class:'Primary 3'},
-    {id:'t6',name:'Mr. Kweku Darko',  email:'kweku.t@school.edu',subject:'Computing / ICT',  phone:'0244-000007',qualification:'BSc Information Technology',experience_years:4, status:'active',class:'KG 2'},
-  ],
-  attendance: [
-    {id:'a1',student_id:'s1', date:'2026-02-17',status:'present',class:'Primary 5'},
-    {id:'a2',student_id:'s2', date:'2026-02-17',status:'present',class:'Primary 5'},
-    {id:'a3',student_id:'s3', date:'2026-02-17',status:'absent', class:'JHS 2'},
-    {id:'a4',student_id:'s4', date:'2026-02-17',status:'late',   class:'JHS 1'},
-    {id:'a5',student_id:'s5', date:'2026-02-17',status:'present',class:'JHS 3'},
-    {id:'a6',student_id:'s7', date:'2026-02-17',status:'excused',class:'KG 2'},
-    {id:'a7',student_id:'s10',date:'2026-02-17',status:'present',class:'JHS 2'},
-  ],
-  grades: [
-    {id:'g1',student_id:'s1', subject:'Mathematics',       assignment:'Mid-Term Exam',  score:75,max_score:100,term:'Term 1 2026',date:'2026-02-10',class:'Primary 5'},
-    {id:'g2',student_id:'s2', subject:'Mathematics',       assignment:'Mid-Term Exam',  score:62,max_score:100,term:'Term 1 2026',date:'2026-02-10',class:'Primary 5'},
-    {id:'g3',student_id:'s3', subject:'English Language',  assignment:'Essay Writing',  score:88,max_score:100,term:'Term 1 2026',date:'2026-02-08',class:'JHS 2'},
-    {id:'g4',student_id:'s4', subject:'Integrated Science',assignment:'Practical Test', score:55,max_score:100,term:'Term 1 2026',date:'2026-02-05',class:'JHS 1'},
-    {id:'g5',student_id:'s5', subject:'Social Studies',    assignment:'Class Test',     score:92,max_score:100,term:'Term 1 2026',date:'2026-02-10',class:'JHS 3'},
-    {id:'g6',student_id:'s10',subject:'English Language',  assignment:'Essay Writing',  score:79,max_score:100,term:'Term 1 2026',date:'2026-02-08',class:'JHS 2'},
-  ],
-  announcements: [
-    {id:'an1',title:'End of Term Examination Timetable',content:'Mid-term examination timetable released. Students collect copies from class teachers. Exams begin Monday, 2nd March 2026.',    created_by:'Headmaster',priority:'high',  created_at:'2026-02-15T09:00:00Z',target_audience:'all'},
-    {id:'an2',title:'PTA Meeting — 7th March 2026',     content:'All parents invited to quarterly PTA meeting on Saturday 7th March at 9:00 AM in the school hall. Attendance compulsory.',  created_by:'Headmaster',priority:'high',  created_at:'2026-02-14T10:00:00Z',target_audience:'parents'},
-    {id:'an3',title:'School Fees Deadline',             content:'Outstanding fees (tuition and canteen) must be paid by 28th February. Students with unpaid fees may not sit mid-term exams.',created_by:'Bursar',    priority:'high',  created_at:'2026-02-13T11:00:00Z',target_audience:'all'},
-    {id:'an4',title:'Independence Day Celebration',     content:"Special cultural programme on 6th March for Ghana's 69th Independence Day. Students should wear national colours.",         created_by:'Admin',     priority:'normal',created_at:'2026-02-12T08:00:00Z',target_audience:'all'},
-  ],
-  fees: [
-    {id:'f1',student_id:'s1', amount:850, fee_type:'Tuition',due_date:'2026-03-01',paid_date:null,          status:'pending',term:'Term 1 2026'},
-    {id:'f2',student_id:'s1', amount:120, fee_type:'Canteen',due_date:'2026-03-01',paid_date:'2026-02-01', status:'paid',   term:'Term 1 2026'},
-    {id:'f3',student_id:'s2', amount:850, fee_type:'Tuition',due_date:'2026-03-01',paid_date:'2026-02-05', status:'paid',   term:'Term 1 2026'},
-    {id:'f4',student_id:'s3', amount:950, fee_type:'Tuition',due_date:'2026-01-15',paid_date:null,          status:'overdue',term:'Term 1 2026'},
-    {id:'f5',student_id:'s4', amount:950, fee_type:'Tuition',due_date:'2026-03-01',paid_date:'2026-02-10', status:'paid',   term:'Term 1 2026'},
-    {id:'f6',student_id:'s5', amount:950, fee_type:'Tuition',due_date:'2026-02-28',paid_date:null,          status:'pending',term:'Term 1 2026'},
-    {id:'f7',student_id:'s7', amount:450, fee_type:'Tuition',due_date:'2026-03-01',paid_date:null,          status:'pending',term:'Term 1 2026'},
-    {id:'f8',student_id:'s10',amount:120, fee_type:'Canteen',due_date:'2026-01-31',paid_date:null,          status:'overdue',term:'Term 1 2026'},
-    {id:'f9',student_id:'s9', amount:600, fee_type:'Tuition',due_date:'2026-03-01',paid_date:null,          status:'pending',term:'Term 1 2026'},
-  ],
-};
+// ─── LIVE DATA ONLY ──────────────────────────────
+// This app now relies on live Supabase data for all tables and no longer
+// uses demo/mock records for students, teachers, attendance, grades, fees,
+// and announcements.
 
 // ─── DATA HOOK ──────────────────────────────
-function useTable(table, mockData) {
-  const [data, setData] = useState(mockData);
+function useTable(table) {
+  const [data, setData] = useState([]);
   const toast = useToast();
   useEffect(() => {
-    if (IS_DEMO || !supabase) return;
+    if (!supabase) return;
 
     let isMounted = true;
     const loadData = async () => {
@@ -148,21 +89,21 @@ function useTable(table, mockData) {
 
     loadData();
     return () => { isMounted = false; };
-  }, [table, mockData]);
+  }, [table]);
   const add = useCallback(async row => {
-    if (IS_DEMO) { setData(p=>[...p,{...row,id:uid(),created_at:new Date().toISOString()}]); toast('Added','success'); return; }
+    if (!supabase) { toast('Cannot add: Supabase not configured','error'); return; }
     const {data:ins,error} = await supabase.from(table).insert(row).select();
     if (error) { toast(error.message,'error'); return; }
     setData(p=>[...p,...ins]); toast('Added','success');
   },[table,toast]);
   const update = useCallback(async (id,changes) => {
-    if (IS_DEMO) { setData(p=>p.map(r=>r.id===id?{...r,...changes}:r)); toast('Updated','success'); return; }
+    if (!supabase) { toast('Cannot update: Supabase not configured','error'); return; }
     const {data:upd,error} = await supabase.from(table).update(changes).eq('id',id).select();
     if (error) { toast(error.message,'error'); return; }
     setData(p=>p.map(r=>r.id===id?upd[0]:r)); toast('Updated','success');
   },[table,toast]);
   const remove = useCallback(async id => {
-    if (IS_DEMO) { setData(p=>p.filter(r=>r.id!==id)); toast('Deleted','info'); return; }
+    if (!supabase) { toast('Cannot delete: Supabase not configured','error'); return; }
     const {error} = await supabase.from(table).delete().eq('id',id);
     if (error) { toast(error.message,'error'); return; }
     setData(p=>p.filter(r=>r.id!==id)); toast('Deleted','info');
@@ -173,8 +114,9 @@ function useTable(table, mockData) {
       if (i>=0) { const n=[...p]; n[i]={...n[i],status}; return n; }
       return [...p,{id:uid(),student_id,date,status,class:cls}];
     });
-    if (!IS_DEMO) await supabase.from('attendance').upsert({student_id,date,status,class:cls},{onConflict:'student_id,date'});
-  },[]);
+    if (!supabase) { toast('Cannot record attendance: Supabase not configured','error'); return; }
+    await supabase.from('attendance').upsert({student_id,date,status,class:cls},{onConflict:'student_id,date'});
+  },[toast]);
   return {data, add, update, remove, upsertAtt};
 }
 
@@ -467,24 +409,52 @@ function WelcomePage({onLogin,onRegister}) {
 // ═══════════════════════════════════════════
 function LoginPage({onLogin,onRegister,onBack}) {
   const toast=useToast();
-  const [role,setRole]=useState('admin');
-  const [email,setEmail]=useState('admin@school.edu');
-  const [pass,setPass]=useState('admin123');
+  const [role,setRole]=useState('teacher');
+  const [email,setEmail]=useState('');
+  const [pass,setPass]=useState('');
   const [show,setShow]=useState(false);
   const [busy,setBusy]=useState(false);
 
-  const prefill=r=>{
-    setRole(r);
-    setEmail(r==='admin'?'admin@school.edu':'abena@school.edu');
-    setPass(r==='admin'?'admin123':'teacher123');
-  };
+  const prefill=r=>setRole(r);
 
   const handleLogin=async()=>{
     setBusy(true);
-    await new Promise(r=>setTimeout(r,600));
-    const user=MOCK.users.find(u=>u.email===email&&u.password===pass&&u.role===role);
-    if(user){toast(`Welcome, ${user.name.split(' ').pop()}!`,'success');onLogin(user);}
-    else toast('Invalid credentials or role selection','error');
+    if (!supabase) {
+      toast('Supabase is not configured. Please set REACT_APP_ENABLE_LIVE_SUPABASE, REACT_APP_SUPABASE_URL, and REACT_APP_SUPABASE_ANON_KEY in .env.','error');
+      setBusy(false);
+      return;
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+    if (error || !data?.user) {
+      toast(error?.message || 'Login failed','error');
+      setBusy(false);
+      return;
+    }
+
+    const userEmail = data.user.email;
+    let profile = null;
+
+    if (role === 'teacher') {
+      const { data: teacher, error: teacherError } = await supabase.from('teachers').select('*').eq('email', userEmail).single();
+      if (teacherError || !teacher) {
+        toast('Teacher profile not found for this email.','error');
+        setBusy(false);
+        return;
+      }
+      profile = { ...teacher, role:'teacher' };
+    } else {
+      const { data: teacher } = await supabase.from('teachers').select('*').eq('email', userEmail).single();
+      if (teacher) {
+        toast('This account is registered as a teacher. Please select Teacher role.','error');
+        setBusy(false);
+        return;
+      }
+      profile = { id:data.user.id, name:userEmail, email:userEmail, role:'admin', subject:'', class:'', phone:'' };
+    }
+
+    toast(`Welcome, ${profile.name.split(' ').pop()}!`,'success');
+    onLogin(profile);
     setBusy(false);
   };
 
@@ -549,7 +519,7 @@ function LoginPage({onLogin,onRegister,onBack}) {
 
           <div className="alert alert-success" style={{fontSize:12}}>
             <FontAwesomeIcon icon={faInfoCircle}/>
-            <div><strong>Demo:</strong> Admin — admin@school.edu / admin123 &nbsp;|&nbsp; Teacher — abena@school.edu / teacher123</div>
+            <div><strong>Note:</strong> This app requires Supabase auth and live tables to work. Set valid Supabase credentials in your environment and sign in with a registered user account.</div>
           </div>
 
           <button className="btn btn-primary btn-block btn-lg" onClick={handleLogin} disabled={busy}>
@@ -687,10 +657,10 @@ function Dashboard({user,students,teachers,attendance,grades,fees,announcements}
 
   return (
     <div className="anim-up">
-      {IS_DEMO&&(
-        <div className="alert alert-info">
+      {!IS_CONNECTED&&(
+        <div className="alert alert-error">
           <FontAwesomeIcon icon={faInfoCircle}/>
-          <span><strong>Demo mode</strong> — Set <code>REACT_APP_ENABLE_LIVE_SUPABASE=true</code> and provide valid <code>REACT_APP_SUPABASE_URL</code> + <code>REACT_APP_SUPABASE_ANON_KEY</code> in <code>.env</code> to enable live data.</span>
+          <span><strong>Supabase is not connected.</strong> Please configure <code>REACT_APP_ENABLE_LIVE_SUPABASE=true</code>, <code>REACT_APP_SUPABASE_URL</code>, and <code>REACT_APP_SUPABASE_ANON_KEY</code> in your .env file.</span>
         </div>
       )}
       <div className="stats-grid">
@@ -1469,7 +1439,7 @@ CREATE TABLE announcements (
           <div className="info-grid">
             {[
               ['System','EduManage Pro'],['Version','3.0.0'],['Database','Supabase PostgreSQL'],
-              ['Mode',IS_DEMO?'Demo':'Live'],['Curriculum','Ghana GES'],['Levels','Nursery · KG · Primary · JHS'],
+              ['Mode',IS_CONNECTED?'Live':'Disconnected'],['Curriculum','Ghana GES'],['Levels','Nursery · KG · Primary · JHS'],
               ['SMS Gateway','Hubtel / Wigal'],['Hosting','Vercel'],
             ].map(([k,v])=>(
               <div key={k} className="info-tile"><div className="info-tile-label">{k}</div><div className="info-tile-value">{v}</div></div>
@@ -1512,12 +1482,12 @@ function AppShell({user,onLogout}) {
   const [page,setPage]           = useState('dashboard');
   const [sidebarOpen,setSidebar] = useState(false);
 
-  const stu = useTable('students',    MOCK.students);
-  const tch = useTable('teachers',    MOCK.teachers);
-  const att = useTable('attendance',  MOCK.attendance);
-  const grd = useTable('grades',      MOCK.grades);
-  const fee = useTable('fees',        MOCK.fees);
-  const ann = useTable('announcements',MOCK.announcements);
+  const stu = useTable('students');
+  const tch = useTable('teachers');
+  const att = useTable('attendance');
+  const grd = useTable('grades');
+  const fee = useTable('fees');
+  const ann = useTable('announcements');
 
   const navItems = user.role==='admin' ? NAV_ADMIN : NAV_TEACHER;
   const current  = navItems.find(n=>n.id===page)||navItems[0];
