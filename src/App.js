@@ -13,6 +13,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import './App.css';
 import { shouldUseLiveSupabase, getSupabaseConfig } from './supabaseConfig';
+import { resolveLoginProfile, syncProfileAndTeacher } from './authHelpers';
 
 // ─── SUPABASE ───────────────────────────────
 const { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY } = getSupabaseConfig(process.env);
@@ -439,21 +440,42 @@ function LoginPage({onLogin,onRegister,onBack}) {
     }
 
     const userId = data.user.id;
-    const { data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('user_id', userId).single();
-    if (profileError || !profile) {
-      toast('No profile found for this account. Please register first.','error');
+    const { data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle();
+    const { profile: resolvedProfile, shouldCreateProfile } = resolveLoginProfile({
+      authUser: data.user,
+      selectedRole: role,
+      profile,
+      profileError,
+    });
+
+    const { profile: syncedProfile, profileError: syncProfileError, teacherError } = await syncProfileAndTeacher(supabase, {
+      authUser: data.user,
+      selectedRole: role,
+      profileData: profile || resolvedProfile,
+      teacherData: {
+        qualification: '',
+        experience_years: 0,
+        status: 'active',
+      },
+    });
+
+    if (shouldCreateProfile || syncProfileError || teacherError) {
+      const messages = [];
+      if (syncProfileError) messages.push(`profile: ${syncProfileError.message}`);
+      if (teacherError) messages.push(`teacher: ${teacherError.message}`);
+      if (messages.length) {
+        toast(`Signed in, but Supabase sync had issues (${messages.join('; ')})`,'warning');
+      }
+    }
+
+    if (role !== (syncedProfile?.role || resolvedProfile.role)) {
+      toast(`Please sign in using the ${resolvedProfile.role} role.`,`error`);
       setBusy(false);
       return;
     }
 
-    if (role !== profile.role) {
-      toast(`Please sign in using the ${profile.role} role.`,`error`);
-      setBusy(false);
-      return;
-    }
-
-    toast(`Welcome, ${profile.name.split(' ').pop()}!`,'success');
-    onLogin(profile);
+    toast(`Welcome, ${(syncedProfile?.name || resolvedProfile.name).split(' ').pop()}!`,'success');
+    onLogin({ ...resolvedProfile, ...syncedProfile, user_id: userId });
     setBusy(false);
   };
 
@@ -566,40 +588,33 @@ function RegisterPage({onBack}) {
     }
 
     const userId = data.user.id;
-    const { error: profileError } = await supabase.from('profiles').insert([{ 
-      user_id: userId,
-      email: form.email,
-      name: form.name,
-      role: form.role,
-      subject: form.subject,
-      class: form.class,
-      phone: form.phone,
-    }]);
+    const { profile, profileError, teacherError } = await syncProfileAndTeacher(supabase, {
+      authUser: data.user,
+      selectedRole: form.role,
+      profileData: {
+        user_id: userId,
+        email: form.email,
+        name: form.name,
+        role: form.role,
+        subject: form.subject,
+        class: form.class,
+        phone: form.phone,
+      },
+      teacherData: {
+        qualification: '',
+        experience_years: 0,
+        status: 'active',
+      },
+    });
 
-    if (profileError) {
-      toast(`Account created, but failed to save profile: ${profileError.message}`,'warning');
+    if (profileError || teacherError) {
+      const messages = [];
+      if (profileError) messages.push(`profile: ${profileError.message}`);
+      if (teacherError) messages.push(`teacher: ${teacherError.message}`);
+      toast(`Account created, but Supabase sync had issues (${messages.join('; ')})`,'warning');
       setBusy(false);
       onBack();
       return;
-    }
-
-    if (form.role==='teacher') {
-      const { error: teacherError } = await supabase.from('teachers').insert([{
-        name: form.name,
-        email: form.email,
-        phone: form.phone,
-        subject: form.subject,
-        class: form.class,
-        qualification:'',
-        experience_years:0,
-        status:'active',
-      }]);
-      if (teacherError) {
-        toast(`Account created, but failed to save teacher record: ${teacherError.message}`,'warning');
-        setBusy(false);
-        onBack();
-        return;
-      }
     }
 
     toast('Account created! Please verify your email and then sign in.','success');
@@ -693,7 +708,7 @@ function RegisterPage({onBack}) {
 // ═══════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════
-function Dashboard({user,students,teachers,attendance,grades,fees,announcements}) {
+function Dashboard({user,students,teachers,attendance,grades,fees,announcements,profiles=[]}) {
   const active   =students.filter(s=>s.status==='active').length;
   const today    =dateToday();
   const todayAtt =attendance.filter(a=>a.date===today);
@@ -710,6 +725,8 @@ function Dashboard({user,students,teachers,attendance,grades,fees,announcements}
     color:{present:'var(--g600)',absent:'var(--red)',late:'var(--gold)',excused:'var(--blue)'}[st],
   }));
   const maxAtt=Math.max(...attStats.map(a=>a.count),1);
+  const accountProfile = profiles.find(p => p.user_id === user.user_id || p.email === user.email) || user;
+  const linkedTeacher = teachers.find(t => t.email === accountProfile.email || t.name === accountProfile.name);
 
   return (
     <div className="anim-up">
@@ -719,6 +736,27 @@ function Dashboard({user,students,teachers,attendance,grades,fees,announcements}
           <span><strong>Supabase is not connected.</strong> Please configure <code>REACT_APP_ENABLE_LIVE_SUPABASE=true</code>, <code>REACT_APP_SUPABASE_URL</code>, and <code>REACT_APP_SUPABASE_ANON_KEY</code> in your .env file.</span>
         </div>
       )}
+      <div className="card" style={{marginBottom:18}}>
+        <div className="card-header"><span className="card-title"><FontAwesomeIcon icon={faUserShield}/> Supabase Profile Sync</span></div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
+          <div style={{padding:'10px 12px',background:'var(--gray50)',borderRadius:12}}>
+            <div style={{fontSize:12,color:'var(--gray500)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>Signed-in user</div>
+            <div style={{fontWeight:800}}>{accountProfile.name || user.name}</div>
+            <div style={{fontSize:13,color:'var(--gray500)'}}>{accountProfile.email || user.email}</div>
+          </div>
+          <div style={{padding:'10px 12px',background:'var(--gray50)',borderRadius:12}}>
+            <div style={{fontSize:12,color:'var(--gray500)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>Role in Supabase</div>
+            <div style={{fontWeight:800,textTransform:'capitalize'}}>{accountProfile.role || user.role}</div>
+            <div style={{fontSize:13,color:'var(--gray500)'}}>{accountProfile.class ? `Class: ${accountProfile.class}` : 'No class assigned yet'}</div>
+          </div>
+          <div style={{padding:'10px 12px',background:'var(--gray50)',borderRadius:12}}>
+            <div style={{fontSize:12,color:'var(--gray500)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>Teacher record</div>
+            <div style={{fontWeight:800}}>{linkedTeacher?.name || 'No linked teacher row'}</div>
+            <div style={{fontSize:13,color:'var(--gray500')}}>{linkedTeacher ? `${linkedTeacher.subject || 'Subject pending'} - ${linkedTeacher.class || 'No class'}` : 'Create a teacher record to make teacher access visible in Supabase'}</div>
+          </div>
+        </div>
+      </div>
+
       <div className="stats-grid">
         {user.role==='admin'&&<>
           <div className="stat-card green"><div className="stat-card-icon"><FontAwesomeIcon icon={faGraduationCap}/></div><div className="stat-value">{active}</div><div className="stat-label">Active Students</div><div className="stat-change up">{students.length} total enrolled</div></div>
@@ -767,6 +805,27 @@ function Dashboard({user,students,teachers,attendance,grades,fees,announcements}
           ))}
         </div>
       </div>
+
+      {user.role==='admin'&&(
+        <div className="card" style={{marginBottom:20}}>
+          <div className="card-header"><span className="card-title"><FontAwesomeIcon icon={faUsers}/> Supabase Profiles</span></div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Class</th></tr></thead>
+              <tbody>
+                {profiles.slice(0,6).map(p=>(
+                  <tr key={p.user_id || p.email}>
+                    <td style={{fontWeight:700}}>{p.name}</td>
+                    <td style={{fontSize:12,color:'var(--gray500)'}}>{p.email}</td>
+                    <td><span className={`badge badge-${p.role==='admin'?'gold':'green'}`}>{p.role || 'teacher'}</span></td>
+                    <td style={{fontSize:12,color:'var(--gray500)'}}>{p.class || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <div className="card-header"><span className="card-title"><FontAwesomeIcon icon={faChartBar}/> Recent Grades</span></div>
@@ -1551,6 +1610,7 @@ function AppShell({user,onLogout}) {
 
   const stu = useTable('students');
   const tch = useTable('teachers');
+  const prof = useTable('profiles');
   const att = useTable('attendance');
   const grd = useTable('grades');
   const fee = useTable('fees');
