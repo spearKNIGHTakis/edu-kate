@@ -547,8 +547,41 @@ function RegisterPage({onBack}) {
     if(!form.name||!form.email||!form.password) return toast('Fill all required fields','error');
     if(form.password!==form.confirm) return toast('Passwords do not match','error');
     if(form.password.length<6) return toast('Password must be at least 6 characters','error');
-    setBusy(true); await new Promise(r=>setTimeout(r,800));
-    toast('Account created! You can now sign in.','success'); setBusy(false); onBack();
+    if (!supabase) {
+      toast('Supabase is not configured. Please set your environment variables.','error');
+      return;
+    }
+
+    setBusy(true);
+    const { error } = await supabase.auth.signUp({ email: form.email, password: form.password });
+    if (error) {
+      toast(error.message,'error');
+      setBusy(false);
+      return;
+    }
+
+    if (form.role==='teacher') {
+      const { error: teacherError } = await supabase.from('teachers').insert([{
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        subject: form.subject,
+        class: form.class,
+        qualification:'',
+        experience_years:0,
+        status:'active',
+      }]);
+      if (teacherError) {
+        toast(`Account created, but failed to save teacher profile: ${teacherError.message}`,'warning');
+        setBusy(false);
+        onBack();
+        return;
+      }
+    }
+
+    toast('Account created! Check your email to verify and then sign in.','success');
+    setBusy(false);
+    onBack();
   };
 
   return (
