@@ -432,25 +432,24 @@ function LoginPage({onLogin,onRegister,onBack}) {
       return;
     }
 
-    const userEmail = data.user.email;
-    let profile = null;
+    if (!data.user.email_confirmed_at) {
+      toast('Please verify your email before signing in.','error');
+      setBusy(false);
+      return;
+    }
 
-    if (role === 'teacher') {
-      const { data: teacher, error: teacherError } = await supabase.from('teachers').select('*').eq('email', userEmail).single();
-      if (teacherError || !teacher) {
-        toast('Teacher profile not found for this email.','error');
-        setBusy(false);
-        return;
-      }
-      profile = { ...teacher, role:'teacher' };
-    } else {
-      const { data: teacher } = await supabase.from('teachers').select('*').eq('email', userEmail).single();
-      if (teacher) {
-        toast('This account is registered as a teacher. Please select Teacher role.','error');
-        setBusy(false);
-        return;
-      }
-      profile = { id:data.user.id, name:userEmail, email:userEmail, role:'admin', subject:'', class:'', phone:'' };
+    const userId = data.user.id;
+    const { data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('user_id', userId).single();
+    if (profileError || !profile) {
+      toast('No profile found for this account. Please register first.','error');
+      setBusy(false);
+      return;
+    }
+
+    if (role !== profile.role) {
+      toast(`Please sign in using the ${profile.role} role.`,`error`);
+      setBusy(false);
+      return;
     }
 
     toast(`Welcome, ${profile.name.split(' ').pop()}!`,'success');
@@ -553,10 +552,34 @@ function RegisterPage({onBack}) {
     }
 
     setBusy(true);
-    const { error } = await supabase.auth.signUp({ email: form.email, password: form.password });
+    const { data, error } = await supabase.auth.signUp({ email: form.email, password: form.password });
     if (error) {
       toast(error.message,'error');
       setBusy(false);
+      return;
+    }
+
+    if (!data?.user?.id) {
+      toast('Failed to create account. Please try again.','error');
+      setBusy(false);
+      return;
+    }
+
+    const userId = data.user.id;
+    const { error: profileError } = await supabase.from('profiles').insert([{ 
+      user_id: userId,
+      email: form.email,
+      name: form.name,
+      role: form.role,
+      subject: form.subject,
+      class: form.class,
+      phone: form.phone,
+    }]);
+
+    if (profileError) {
+      toast(`Account created, but failed to save profile: ${profileError.message}`,'warning');
+      setBusy(false);
+      onBack();
       return;
     }
 
@@ -572,14 +595,14 @@ function RegisterPage({onBack}) {
         status:'active',
       }]);
       if (teacherError) {
-        toast(`Account created, but failed to save teacher profile: ${teacherError.message}`,'warning');
+        toast(`Account created, but failed to save teacher record: ${teacherError.message}`,'warning');
         setBusy(false);
         onBack();
         return;
       }
     }
 
-    toast('Account created! Check your email to verify and then sign in.','success');
+    toast('Account created! Please verify your email and then sign in.','success');
     setBusy(false);
     onBack();
   };
@@ -1395,6 +1418,17 @@ CREATE TABLE students (
   guardian_phone text,
   address text,
   status text DEFAULT 'active',
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE profiles (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email text UNIQUE NOT NULL,
+  name text NOT NULL,
+  role text NOT NULL DEFAULT 'teacher',
+  subject text,
+  class text,
+  phone text,
   created_at timestamptz DEFAULT now()
 );
 
