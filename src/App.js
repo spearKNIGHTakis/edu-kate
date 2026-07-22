@@ -752,7 +752,7 @@ function Dashboard({user,students,teachers,attendance,grades,fees,announcements,
           <div style={{padding:'10px 12px',background:'var(--gray50)',borderRadius:12}}>
             <div style={{fontSize:12,color:'var(--gray500)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>Teacher record</div>
             <div style={{fontWeight:800}}>{linkedTeacher?.name || 'No linked teacher row'}</div>
-            <div style={{fontSize:13,color:'var(--gray500')}}>{linkedTeacher ? `${linkedTeacher.subject || 'Subject pending'} - ${linkedTeacher.class || 'No class'}` : 'Create a teacher record to make teacher access visible in Supabase'}</div>
+            <div style={{fontSize:13,color:'var(--gray500)'}}>{linkedTeacher ? `${linkedTeacher.subject || 'Subject pending'} - ${linkedTeacher.class || 'No class'}` : 'Create a teacher record to make teacher access visible in Supabase'}</div>
           </div>
         </div>
       </div>
@@ -858,7 +858,7 @@ function Dashboard({user,students,teachers,attendance,grades,fees,announcements,
 // ═══════════════════════════════════════════
 // STUDENTS
 // ═══════════════════════════════════════════
-const BLANK_STU={name:'',email:'',class:'Primary 1',dob:'',phone:'',guardian_name:'',guardian_phone:'',address:'',status:'active'};
+const BLANK_STU={name:'',email:'',class:'Primary 1',dob:'',guardian_name:'',guardian_phone:'',address:'',status:'active'};
 
 function Students({students,onAdd,onEdit,onDelete}) {
   const [search,setSearch]=useState('');
@@ -972,7 +972,7 @@ function Teachers({teachers,onAdd,onEdit,onDelete}) {
   const [form,setForm]=useState(BLANK_TCH);
   const F=k=>e=>setForm(p=>({...p,[k]:e.target.value}));
   const classSubs=form.class?getSubjectsForClass(form.class):ALL_SUBJECTS;
-  const filtered=teachers.filter(t=>!search||t.name.toLowerCase().includes(search.toLowerCase())||t.subject.toLowerCase().includes(search.toLowerCase()));
+  const filtered=teachers.filter(t=>!search||t.name.toLowerCase().includes(search.toLowerCase())||(t.subject||'').toLowerCase().includes(search.toLowerCase()));
 
   const openAdd =()=>{setEditing(null);setForm(BLANK_TCH);setModal(true);};
   const openEdit=t=>{setEditing(t.id);setForm({...t});setModal(true);};
@@ -1694,7 +1694,7 @@ function AppShell({user,onLogout}) {
         </div>
 
         <div className="content">
-          {page==='dashboard'    &&<Dashboard     user={user} students={stu.data} teachers={tch.data} attendance={att.data} grades={grd.data} fees={fee.data} announcements={ann.data}/>}
+          {page==='dashboard'    &&<Dashboard     user={user} students={stu.data} teachers={tch.data} attendance={att.data} grades={grd.data} fees={fee.data} announcements={ann.data} profiles={prof.data}/>}
           {page==='students'     &&<Students      students={stu.data} onAdd={stu.add} onEdit={stu.update} onDelete={stu.remove}/>}
           {page==='teachers'     &&<Teachers      teachers={tch.data} onAdd={tch.add} onEdit={tch.update} onDelete={tch.remove}/>}
           {page==='attendance'   &&<Attendance    user={user} students={stu.data} attendance={att.data} onRecord={att.upsertAtt}/>}
