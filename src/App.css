@@ -206,8 +206,8 @@ tr:hover td{background:var(--g50)}
 .badge-green{background:var(--g50);color:var(--g700);border:1px solid var(--g100)}.badge-red{background:var(--red-bg);color:var(--red);border:1px solid rgba(220,38,38,.2)}.badge-yellow{background:var(--gold-lt);color:#b07800;border:1px solid rgba(244,163,0,.25)}.badge-blue{background:var(--blue-bg);color:var(--blue);border:1px solid rgba(29,78,216,.2)}.badge-gray{background:var(--gray100);color:var(--gray600);border:1px solid var(--gray200)}.badge-gold{background:var(--gold-lt);color:#b07800;border:1px solid rgba(244,163,0,.3)}
 
 /* MODAL */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);z-index:600;display:flex;align-items:center;justify-content:center;padding:16px;animation:fadeIn .2s ease}
-.modal{background:var(--white);border:1px solid var(--gray200);border-radius:14px;padding:26px;width:100%;max-width:520px;max-height:92vh;overflow-y:auto;box-shadow:var(--shadow-lg);animation:fadeUp .3s ease}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;animation:fadeIn .2s ease}
+.modal{background:var(--white);border:1px solid var(--gray200);border-radius:14px;padding:26px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto;box-shadow:var(--shadow-lg);animation:fadeUp .3s ease;position:relative}
 .modal-lg{max-width:660px}
 .modal-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
 .modal-title{font-family:var(--font-head);font-size:18px;font-weight:700;color:var(--g900);display:flex;align-items:center;gap:8px}

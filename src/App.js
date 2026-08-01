@@ -402,6 +402,12 @@ function SchoolLogo({size=44,style={}}) {
 
 // ─── MODAL ──────────────────────────────────
 function Modal({title,icon,onClose,onSave,children,lg}) {
+  useEffect(()=>{
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return ()=>{ document.body.style.overflow = prevOverflow; };
+  }, []);
+
   return (
     <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className={`modal${lg?' modal-lg':''}`}>
@@ -1541,19 +1547,30 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
       &&(!fCls||s?.class===fCls)
       &&(!feeTypeFilter||f.fee_type===feeTypeFilter);
   });
-  const exportRows=list.map(f=>({
-    Student: students.find(st=>st.id===f.student_id)?.name || 'Unknown',
-    Class: students.find(st=>st.id===f.student_id)?.class || '—',
-    FeeType: f.fee_type,
-    Amount: fmtMoney(f.amount),
-    DueDate: fmtDate(f.due_date),
-    PaidDate: fmtDate(f.paid_date),
-    Status: f.status,
-  }));
+  const exportRows=list.map(f=>{
+    const student = students.find(st=>st.id===f.student_id);
+    const row = {
+      Student: student?.name || 'Unknown',
+      Class: student?.class || '—',
+    };
+    FEE_TYPES.forEach(type => {
+      row[type] = f.fee_type === type ? fmtMoney(f.amount) : '';
+    });
+    return {
+      ...row,
+      DueDate: fmtDate(f.due_date),
+      PaidDate: fmtDate(f.paid_date),
+      Status: f.status,
+    };
+  });
 
   const collected =fees.filter(f=>f.status==='paid').reduce((s,f)=>s+Number(f.amount),0);
   const pending   =fees.filter(f=>f.status==='pending').reduce((s,f)=>s+Number(f.amount),0);
   const overdueAmt=fees.filter(f=>f.status==='overdue').reduce((s,f)=>s+Number(f.amount),0);
+  const feeTypeTotals = FEE_TYPES.reduce((totals,t)=>({
+    ...totals,
+    [t]: list.filter(f=>f.fee_type===t).reduce((sum,f)=>sum+Number(f.amount),0)
+  }), {});
 
   const save    =()=>{if(!form.student_id||!form.amount)return alert('Fill required fields');onAdd(form);setModal(false);setNewFeeType('');setForm(BLANK_FEE);};
   const markPaid=id=>onUpdate(id,{status:'paid',paid_date:dateToday()});
@@ -1603,7 +1620,18 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
 
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Student</th><th>Class</th><th>Fee Type</th><th>Amount (GH₵)</th><th>Due Date</th><th>Paid Date</th><th>Status</th><th>Action</th><th>Delete</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Class</th>
+              {FEE_TYPES.map(t=><th key={t}>{t}</th>)}
+              <th>Due Date</th>
+              <th>Paid Date</th>
+              <th>Status</th>
+              <th>Action</th>
+              <th>Delete</th>
+            </tr>
+          </thead>
           <tbody>
             {list.map(f=>{
               const s=students.find(st=>st.id===f.student_id);
@@ -1611,8 +1639,16 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
                 <tr key={f.id}>
                   <td><div style={{display:'flex',alignItems:'center',gap:8}}><Avatar name={s?.name||'?'} size={28}/><span style={{fontWeight:700}}>{s?.name||'Unknown'}</span></div></td>
                   <td><span className="badge badge-green">{s?.class||'—'}</span></td>
-                  <td>{f.fee_type}</td>
-                  <td style={{fontWeight:800,color:'var(--g800)'}}>{fmtMoney(f.amount)}</td>
+                  {FEE_TYPES.map(t=>(
+                    <td key={t} style={{fontWeight:f.fee_type===t?800:'inherit', color:f.fee_type===t?'var(--g800)':'inherit'}}>
+                      {f.fee_type===t ? (
+                        <div style={{display:'grid',gap:2}}>
+                          <span>{fmtMoney(f.amount)}</span>
+                          <small style={{color:'var(--gray500)'}}>{f.fee_type}</small>
+                        </div>
+                      ) : null}
+                    </td>
+                  ))}
                   <td style={{fontSize:12}}>{fmtDate(f.due_date)}</td>
                   <td style={{fontSize:12,color:'var(--gray400)'}}>{fmtDate(f.paid_date)}</td>
                   <td><span className={`badge badge-${f.status==='paid'?'green':f.status==='overdue'?'red':'yellow'}`}>{f.status}</span></td>
@@ -1622,6 +1658,17 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
               );
             })}
           </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={2} style={{fontWeight:700}}>Totals</td>
+              {FEE_TYPES.map(t=>(
+                <td key={t} style={{fontWeight:700,color:feeTypeTotals[t] ? 'var(--g800)' : 'var(--gray400)'}}>
+                  {feeTypeTotals[t] ? fmtMoney(feeTypeTotals[t]) : '–'}
+                </td>
+              ))}
+              <td colSpan={4}></td>
+            </tr>
+          </tfoot>
         </table>
         {!list.length&&<div className="empty-state"><div className="empty-state-icon"><FontAwesomeIcon icon={faMoneyBillWave}/></div><h3>No fee records</h3><p>All clear in this category.</p></div>}
       </div>
