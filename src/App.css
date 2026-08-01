@@ -222,10 +222,6 @@ tr:hover td{background:var(--g50)}
 .search-wrap input{padding-left:36px}
 .search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--gray400);font-size:14px;pointer-events:none}
 .filter-sel{width:auto;min-width:120px;padding:9px 12px}
-.fee-type-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.fee-type-btn{background:var(--g50);color:var(--g700);border:1px solid var(--g100);border-radius:10px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;transition:var(--transition)}
-.fee-type-btn:hover{background:var(--g100)}
-.fee-type-btn.active{background:var(--g800);color:var(--white);border-color:var(--g800)}
 
 /* ATTENDANCE */
 .att-btns{display:flex;gap:4px;flex-wrap:wrap}

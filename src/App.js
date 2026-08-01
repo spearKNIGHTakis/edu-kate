@@ -1540,11 +1540,11 @@ const BLANK_FEE={student_id:'',amount:'',fee_type:'Tuition',due_date:'',status:'
 
 function Fees({students,fees,onAdd,onUpdate,onDelete}) {
   const [tab,setTab]=useState('all');
+  const [feeTypePage,setFeeTypePage]=useState('all');
   const [showForm,setShowForm]=useState(false);
   const [smsModal,setSmsModal]=useState(false);
   const [expModal,setExpModal]=useState(false);
   const [fCls,setFCls]=useState('');
-  const [feeTypeFilter,setFeeTypeFilter]=useState('');
   const [form,setForm]=useState(BLANK_FEE);
   const F=k=>e=>setForm(p=>({...p,[k]:e.target.value}));
 
@@ -1552,39 +1552,36 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
     const s=students.find(st=>st.id===f.student_id);
     return (tab==='all'||f.status===tab)
       &&(!fCls||s?.class===fCls)
-      &&(!feeTypeFilter||f.fee_type===feeTypeFilter);
+      &&(feeTypePage==='all'||f.fee_type===feeTypePage);
   });
-  const exportRows=list.map(f=>{
-    const student = students.find(st=>st.id===f.student_id);
-    const row = {
-      Student: student?.name || 'Unknown',
-      Class: student?.class || '—',
-    };
-    FEE_TYPES.forEach(type => {
-      row[type] = f.fee_type === type ? fmtMoney(f.amount) : '';
-    });
-    return {
-      ...row,
-      DueDate: fmtDate(f.due_date),
-      PaidDate: fmtDate(f.paid_date),
-      Status: f.status,
-    };
-  });
+  const exportRows=list.map(f=>({
+    Student: students.find(st=>st.id===f.student_id)?.name || 'Unknown',
+    Class: students.find(st=>st.id===f.student_id)?.class || '—',
+    FeeType: f.fee_type,
+    Amount: fmtMoney(f.amount),
+    DueDate: fmtDate(f.due_date),
+    PaidDate: fmtDate(f.paid_date),
+    Status: f.status,
+  }));
 
   const collected =fees.filter(f=>f.status==='paid').reduce((s,f)=>s+Number(f.amount),0);
   const pending   =fees.filter(f=>f.status==='pending').reduce((s,f)=>s+Number(f.amount),0);
   const overdueAmt=fees.filter(f=>f.status==='overdue').reduce((s,f)=>s+Number(f.amount),0);
-  const feeTypeTotals = FEE_TYPES.reduce((totals,t)=>({
-    ...totals,
-    [t]: list.filter(f=>f.fee_type===t).reduce((sum,f)=>sum+Number(f.amount),0)
-  }), {});
 
-  const startAddFee = type => {
+  const openAddFee = () => {
     setShowForm(true);
-    setForm({...BLANK_FEE, fee_type:type});
+    setForm({
+      ...BLANK_FEE,
+      fee_type: feeTypePage==='all' ? 'Tuition' : feeTypePage,
+    });
   };
 
-  const save    =()=>{if(!form.student_id||!form.amount)return alert('Fill required fields');onAdd(form);setShowForm(false);setForm(BLANK_FEE);};
+  const save = () => {
+    if(!form.student_id||!form.amount) return alert('Fill required fields');
+    onAdd(form);
+    setShowForm(false);
+    setForm(BLANK_FEE);
+  };
   const markPaid=id=>onUpdate(id,{status:'paid',paid_date:dateToday()});
   const del=id=>{ if(window.confirm('Delete this fee record?')) onDelete(id); };
 
@@ -1602,10 +1599,12 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
             <button key={t} className={`tab${tab===t?' active':''}`} onClick={()=>setTab(t)}>{t[0].toUpperCase()+t.slice(1)}</button>
           ))}
         </div>
-        <select className="filter-sel" value={feeTypeFilter} onChange={e=>setFeeTypeFilter(e.target.value)}>
-          <option value="">All Fee Types</option>
-          {FEE_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
-        </select>
+        <div style={{display:'flex',flexWrap:'wrap',gap:8,marginLeft:12}}>
+          <button className={`tab${feeTypePage==='all'?' active':''}`} onClick={()=>setFeeTypePage('all')}>All Fees</button>
+          {FEE_TYPES.map(t=>(
+            <button key={t} className={`tab${feeTypePage===t?' active':''}`} onClick={()=>setFeeTypePage(t)}>{t}</button>
+          ))}
+        </div>
         <select className="filter-sel" value={fCls} onChange={e=>setFCls(e.target.value)}>
           <option value="">All Classes</option>
           {SCHOOL_LEVELS.map(lvl=>(
@@ -1617,21 +1616,34 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
         <span style={{marginLeft:'auto',fontSize:12,color:'var(--gray500)',fontWeight:600}}>{list.length} records</span>
         <button className="btn btn-secondary btn-sm" onClick={()=>setExpModal(true)}><FontAwesomeIcon icon={faDownload}/></button>
         <button className="btn btn-secondary btn-sm" onClick={()=>setSmsModal(true)}><FontAwesomeIcon icon={faSms}/> SMS</button>
-        <div className="fee-type-bar">
-          <span style={{fontSize:12,color:'var(--gray600)',fontWeight:700,whiteSpace:'nowrap'}}>Add fee:</span>
-          {FEE_TYPES.map(t=>(
-            <button key={t} className="btn btn-sm fee-type-btn" onClick={()=>startAddFee(t)}>{t}</button>
-          ))}
-        </div>
+        <button className="btn btn-primary btn-sm" onClick={openAddFee}><FontAwesomeIcon icon={faPlus}/> Add Fee</button>
       </div>
 
+      {showForm&&(
+        <div className="fee-add-panel" style={{marginBottom:18,background:'var(--white)',border:'1px solid var(--gray200)',borderRadius:'14px',padding:'18px',boxShadow:'var(--shadow-sm)'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:14}}>
+            <div className="form-group"><label>Student *</label><select value={form.student_id} onChange={F('student_id')}><option value="">Select student…</option>{students.filter(s=>s.status==='active').map(s=><option key={s.id} value={s.id}>{s.name} — {s.class}</option>)}</select></div>
+            <div className="form-group"><label>Fee Type *</label>{feeTypePage==='all'
+              ? <select value={form.fee_type} onChange={F('fee_type')}>{FEE_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select>
+              : <input value={form.fee_type} readOnly style={{opacity:.8,cursor:'not-allowed'}} />
+            }</div>
+            <div className="form-group"><label>Amount (GH₵) *</label><input type="number" min="0" value={form.amount} onChange={F('amount')} placeholder="0.00"/></div>
+            <div className="form-group"><label>Due Date</label><input type="date" value={form.due_date} onChange={F('due_date')}/></div>
+          </div>
+          <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:16}}>
+            <button className="btn btn-secondary btn-sm" onClick={()=>{setShowForm(false);setForm(BLANK_FEE);}}>Cancel</button>
+            <button className="btn btn-primary btn-sm" onClick={save}><FontAwesomeIcon icon={faCheck}/> Save Fee</button>
+          </div>
+        </div>
+      )}
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Student</th>
               <th>Class</th>
-              {FEE_TYPES.map(t=><th key={t}>{t}</th>)}
+              <th>Fee Type</th>
+              <th>Amount (GH₵)</th>
               <th>Due Date</th>
               <th>Paid Date</th>
               <th>Status</th>
@@ -1646,16 +1658,8 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
                 <tr key={f.id}>
                   <td><div style={{display:'flex',alignItems:'center',gap:8}}><Avatar name={s?.name||'?'} size={28}/><span style={{fontWeight:700}}>{s?.name||'Unknown'}</span></div></td>
                   <td><span className="badge badge-green">{s?.class||'—'}</span></td>
-                  {FEE_TYPES.map(t=>(
-                    <td key={t} style={{fontWeight:f.fee_type===t?800:'inherit', color:f.fee_type===t?'var(--g800)':'inherit'}}>
-                      {f.fee_type===t ? (
-                        <div style={{display:'grid',gap:2}}>
-                          <span>{fmtMoney(f.amount)}</span>
-                          <small style={{color:'var(--gray500)'}}>{f.fee_type}</small>
-                        </div>
-                      ) : null}
-                    </td>
-                  ))}
+                  <td>{f.fee_type}</td>
+                  <td style={{fontWeight:800,color:'var(--g800)'}}>{fmtMoney(f.amount)}</td>
                   <td style={{fontSize:12}}>{fmtDate(f.due_date)}</td>
                   <td style={{fontSize:12,color:'var(--gray400)'}}>{fmtDate(f.paid_date)}</td>
                   <td><span className={`badge badge-${f.status==='paid'?'green':f.status==='overdue'?'red':'yellow'}`}>{f.status}</span></td>
@@ -1665,46 +1669,10 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
               );
             })}
           </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={2} style={{fontWeight:700}}>Totals</td>
-              {FEE_TYPES.map(t=>(
-                <td key={t} style={{fontWeight:700,color:feeTypeTotals[t] ? 'var(--g800)' : 'var(--gray400)'}}>
-                  {feeTypeTotals[t] ? fmtMoney(feeTypeTotals[t]) : '–'}
-                </td>
-              ))}
-              <td colSpan={4}></td>
-            </tr>
-          </tfoot>
         </table>
         {!list.length&&<div className="empty-state"><div className="empty-state-icon"><FontAwesomeIcon icon={faMoneyBillWave}/></div><h3>No fee records</h3><p>All clear in this category.</p></div>}
       </div>
 
-      {modal&&(
-        <Modal title={`Add ${newFeeType || 'Fee'} Record`} icon={faMoneyBillWave} onClose={() => { setModal(false); setNewFeeType(''); setForm(BLANK_FEE); }} onSave={save}>
-          <div className="form-group">
-            <label>Student *</label>
-            <select value={form.student_id} onChange={F('student_id')}>
-              <option value="">Select student…</option>
-              {students.filter(s=>s.status==='active').map(s=><option key={s.id} value={s.id}>{s.name} — {s.class}</option>)}
-            </select>
-          </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Fee Type *</label>
-              <select value={form.fee_type} onChange={F('fee_type')}>
-                {FEE_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div className="form-group"><label>Amount (GH₵) *</label><input type="number" min="0" value={form.amount} onChange={F('amount')} placeholder="0.00"/></div>
-          </div>
-          <div className="form-row">
-            <div className="form-group"><label>Due Date</label><input type="date" value={form.due_date} onChange={F('due_date')}/></div>
-            <div className="form-group"><label>Term</label><input value={form.term} onChange={F('term')}/></div>
-          </div>
-          <div className="form-group"><label>Status</label><select value={form.status} onChange={F('status')}><option value="pending">Pending</option><option value="paid">Paid</option><option value="overdue">Overdue</option></select></div>
-        </Modal>
-      )}
       {smsModal&&<SmsModal onClose={()=>setSmsModal(false)} students={students} fees={fees}/>}
       {expModal &&<ExportModal onClose={()=>setExpModal(false)} dataLabel="Fee Records" rows={exportRows}/>}
     </div>
