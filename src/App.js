@@ -46,6 +46,61 @@ const SUBJECTS_BY_LEVEL = {
 const ALL_SUBJECTS = [...new Set(Object.values(SUBJECTS_BY_LEVEL).flat())];
 const FEE_TYPES = ['Tuition','Canteen','PTA Levy','Examination Fee','Sports Fee','Library Fee','Uniform'];
 
+const OnlineCtx = createContext(true);
+const useOnline = () => useContext(OnlineCtx);
+const OFFLINE_QUEUE_KEY = 'edu-manage-offline-queue';
+const OFFLINE_CACHE_PREFIX = 'edu-manage-cache-';
+const isTempId = id => typeof id === 'string' && id.startsWith('offline-');
+const readOfflineQueue = () => {
+  try {
+    return JSON.parse(window.localStorage.getItem(OFFLINE_QUEUE_KEY) || '{}');
+  } catch (err) {
+    console.warn('Unable to read offline queue', err);
+    return {};
+  }
+};
+const writeOfflineQueue = queue => {
+  try {
+    window.localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+  } catch (err) {
+    console.warn('Unable to write offline queue', err);
+  }
+};
+const readCachedTable = table => {
+  try {
+    return JSON.parse(window.localStorage.getItem(`${OFFLINE_CACHE_PREFIX}${table}`) || '[]');
+  } catch (err) {
+    console.warn(`Unable to read cached ${table}`, err);
+    return [];
+  }
+};
+const writeCachedTable = (table, rows) => {
+  try {
+    window.localStorage.setItem(`${OFFLINE_CACHE_PREFIX}${table}`, JSON.stringify(rows));
+  } catch (err) {
+    console.warn(`Unable to write cached ${table}`, err);
+  }
+};
+const mergeOfflineAction = (table, action) => {
+  const queue = readOfflineQueue();
+  queue[table] = [...(queue[table] || []), action];
+  writeOfflineQueue(queue);
+};
+const applyOfflineQueue = (table, rows=[]) => {
+  const queue = readOfflineQueue()[table] || [];
+  let result = [...rows];
+  queue.forEach(action => {
+    if (action.type === 'add') {
+      result.unshift(action.row);
+    } else if (action.type === 'update') {
+      result = result.map(row => row.id === action.id ? {...row, ...action.changes} : row);
+    } else if (action.type === 'remove') {
+      result = result.filter(row => row.id !== action.id);
+    }
+  });
+  return result;
+};
+
 const getLevelForClass = cls => {
   for (const lvl of SCHOOL_LEVELS) if (lvl.classes.includes(cls)) return lvl.label;
   return 'Primary';
@@ -68,57 +123,242 @@ const letterGrade= (s,m)=>{ const p=(s/m)*100; if(p>=80)return'A';if(p>=70)retur
 // ─── DATA HOOK ──────────────────────────────
 function useTable(table) {
   const [data, setData] = useState([]);
+  const online = useOnline();
   const toast = useToast();
-  useEffect(() => {
-    if (!supabase) return;
 
-    let isMounted = true;
-    const loadData = async () => {
+  const persistRows = useCallback(rows => {
+    setData(rows);
+    writeCachedTable(table, rows);
+  }, [table]);
+
+  const flushOfflineQueue = useCallback(async () => {
+    if (!supabase || !online) return;
+    const queue = readOfflineQueue()[table] || [];
+    if (!queue.length) return;
+
+    const idMap = new Map();
+    const nextQueue = [];
+
+    for (const action of queue) {
       try {
-        const { data: rows, error } = await supabase.from(table).select('*').order('created_at',{ascending:false});
-        if (!isMounted) return;
-        if (!error && rows) {
-          setData(rows);
-          return;
+        if (action.type === 'add') {
+          const row = { ...action.row };
+          const tempId = row.id;
+          if (isTempId(tempId)) delete row.id;
+          const { data: ins, error } = await supabase.from(table).insert(row).select();
+          if (error) throw error;
+          if (ins?.[0]) {
+            if (tempId && isTempId(tempId)) idMap.set(tempId, ins[0].id);
+            setData(prev => prev.map(r => r.id === tempId ? ins[0] : r));
+          }
+        } else if (action.type === 'update') {
+          let targetId = action.id;
+          if (isTempId(targetId) && idMap.has(targetId)) targetId = idMap.get(targetId);
+          if (isTempId(targetId)) {
+            setData(prev => prev.map(r => r.id === action.id ? { ...r, ...action.changes } : r));
+            continue;
+          }
+          const { data: upd, error } = await supabase.from(table).update(action.changes).eq('id', targetId).select();
+          if (error) throw error;
+          if (upd?.[0]) {
+            setData(prev => prev.map(r => r.id === targetId ? upd[0] : r));
+          }
+        } else if (action.type === 'remove') {
+          let targetId = action.id;
+          if (isTempId(targetId) && idMap.has(targetId)) targetId = idMap.get(targetId);
+          if (isTempId(targetId)) {
+            continue;
+          }
+          const { error } = await supabase.from(table).delete().eq('id', targetId);
+          if (error) throw error;
+          setData(prev => prev.filter(r => r.id !== targetId && r.id !== action.id));
+        } else if (action.type === 'upsert') {
+          const row = { ...action.row };
+          if (isTempId(row.id)) delete row.id;
+          const { error } = await supabase.from(table).upsert(row, { onConflict: action.onConflict || 'id' });
+          if (error) throw error;
         }
-        console.warn(`[${table}] live fetch failed; keeping the existing data`, error?.message || 'unknown error');
       } catch (err) {
-        if (!isMounted) return;
+        console.warn(`Failed to sync offline action for ${table}`, err);
+        nextQueue.push(action);
+      }
+    }
+
+    const allQueues = readOfflineQueue();
+    if (nextQueue.length) {
+      allQueues[table] = nextQueue;
+      writeOfflineQueue(allQueues);
+      toast('Some offline changes remain unsynced','error');
+    } else {
+      delete allQueues[table];
+      writeOfflineQueue(allQueues);
+      toast('Offline changes synced','success');
+    }
+
+    if (!nextQueue.length) {
+      try {
+        const { data: rows, error } = await supabase.from(table).select('*').order('created_at', { ascending: false });
+        if (!error && rows) {
+          const merged = applyOfflineQueue(table, rows);
+          persistRows(merged);
+        }
+      } catch (err) {
+        console.warn(`[${table}] live fetch failed after sync`, err);
+      }
+    }
+  }, [online, persistRows, table, toast]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      const cached = readCachedTable(table);
+      if (!supabase || !online) {
+        persistRows(applyOfflineQueue(table, cached));
+        return;
+      }
+
+      let fetched = [];
+      try {
+        const { data: rows, error } = await supabase.from(table).select('*').order('created_at', { ascending: false });
+        if (!error && rows) fetched = rows;
+        else console.warn(`[${table}] live fetch failed; using cached data`, error?.message || 'unknown error');
+      } catch (err) {
         console.warn(`[${table}] live fetch failed`, err);
       }
+      const merged = applyOfflineQueue(table, fetched.length ? fetched : cached);
+      persistRows(merged);
     };
 
     loadData();
-    return () => { isMounted = false; };
-  }, [table]);
+  }, [online, persistRows, table]);
+
+  useEffect(() => {
+    if (online) {
+      flushOfflineQueue();
+    }
+  }, [online, flushOfflineQueue]);
+
   const add = useCallback(async row => {
-    if (!supabase) { toast('Cannot add: Supabase not configured','error'); return; }
-    const {data:ins,error} = await supabase.from(table).insert(row).select();
-    if (error) { toast(error.message,'error'); return; }
-    setData(p=>[...p,...ins]); toast('Added','success');
-  },[table,toast]);
-  const update = useCallback(async (id,changes) => {
-    if (!supabase) { toast('Cannot update: Supabase not configured','error'); return; }
-    const {data:upd,error} = await supabase.from(table).update(changes).eq('id',id).select();
-    if (error) { toast(error.message,'error'); return; }
-    setData(p=>p.map(r=>r.id===id?upd[0]:r)); toast('Updated','success');
-  },[table,toast]);
+    if (!supabase || !online) {
+      const offlineRow = { ...row, id: `offline-${uid()}`, created_at: new Date().toISOString() };
+      setData(p => {
+        const next = [offlineRow, ...p];
+        writeCachedTable(table, next);
+        return next;
+      });
+      mergeOfflineAction(table, { type: 'add', row: offlineRow });
+      toast('Saved offline — will sync when online','info');
+      return;
+    }
+    try {
+      const { data: ins, error } = await supabase.from(table).insert(row).select();
+      if (error) throw error;
+      setData(p => {
+        const next = [...(ins || []), ...p];
+        writeCachedTable(table, next);
+        return next;
+      });
+      toast('Added','success');
+    } catch (err) {
+      const offlineRow = { ...row, id: `offline-${uid()}`, created_at: new Date().toISOString() };
+      setData(p => {
+        const next = [offlineRow, ...p];
+        writeCachedTable(table, next);
+        return next;
+      });
+      mergeOfflineAction(table, { type: 'add', row: offlineRow });
+      toast('Saved offline — will sync when online','info');
+    }
+  }, [online, table, toast]);
+
+  const update = useCallback(async (id, changes) => {
+    if (!supabase || !online || isTempId(id)) {
+      setData(p => {
+        const next = p.map(r => r.id === id ? { ...r, ...changes } : r);
+        writeCachedTable(table, next);
+        return next;
+      });
+      if (!isTempId(id)) mergeOfflineAction(table, { type: 'update', id, changes });
+      toast('Saved offline — will sync when online','info');
+      return;
+    }
+    try {
+      const { data: upd, error } = await supabase.from(table).update(changes).eq('id', id).select();
+      if (error) throw error;
+      setData(p => {
+        const next = p.map(r => r.id === id ? upd[0] : r);
+        writeCachedTable(table, next);
+        return next;
+      });
+      toast('Updated','success');
+    } catch (err) {
+      setData(p => {
+        const next = p.map(r => r.id === id ? { ...r, ...changes } : r);
+        writeCachedTable(table, next);
+        return next;
+      });
+      mergeOfflineAction(table, { type: 'update', id, changes });
+      toast('Saved offline — will sync when online','info');
+    }
+  }, [online, table, toast]);
+
   const remove = useCallback(async id => {
-    if (!supabase) { toast('Cannot delete: Supabase not configured','error'); return; }
-    const {error} = await supabase.from(table).delete().eq('id',id);
-    if (error) { toast(error.message,'error'); return; }
-    setData(p=>p.filter(r=>r.id!==id)); toast('Deleted','info');
-  },[table,toast]);
-  const upsertAtt = useCallback(async (student_id,date,status,cls) => {
+    if (!supabase || !online || isTempId(id)) {
+      setData(p => {
+        const next = p.filter(r => r.id !== id);
+        writeCachedTable(table, next);
+        return next;
+      });
+      if (!isTempId(id)) mergeOfflineAction(table, { type: 'remove', id });
+      toast(isTempId(id) ? 'Removed local record' : 'Saved offline deletion — will sync when online','info');
+      return;
+    }
+    try {
+      const { error } = await supabase.from(table).delete().eq('id', id);
+      if (error) throw error;
+      setData(p => {
+        const next = p.filter(r => r.id !== id);
+        writeCachedTable(table, next);
+        return next;
+      });
+      toast('Deleted','info');
+    } catch (err) {
+      setData(p => {
+        const next = p.filter(r => r.id !== id);
+        writeCachedTable(table, next);
+        return next;
+      });
+      mergeOfflineAction(table, { type: 'remove', id });
+      toast('Saved offline deletion — will sync when online','info');
+    }
+  }, [online, table, toast]);
+
+  const upsertAtt = useCallback(async (student_id, date, status, cls) => {
+    const existing = data.find(a => a.student_id === student_id && a.date === date);
+    const row = existing ? { ...existing, status } : { id: `offline-${uid()}`, student_id, date, status, class: cls, created_at: new Date().toISOString() };
+
     setData(p => {
-      const i = p.findIndex(a=>a.student_id===student_id&&a.date===date);
-      if (i>=0) { const n=[...p]; n[i]={...n[i],status}; return n; }
-      return [...p,{id:uid(),student_id,date,status,class:cls}];
+      const i = p.findIndex(a => a.student_id === student_id && a.date === date);
+      const next = i >= 0 ? p.map((item, index) => index === i ? { ...item, status } : item) : [...p, row];
+      writeCachedTable(table, next);
+      return next;
     });
-    if (!supabase) { toast('Cannot record attendance: Supabase not configured','error'); return; }
-    await supabase.from('attendance').upsert({student_id,date,status,class:cls},{onConflict:'student_id,date'});
-  },[toast]);
-  return {data, add, update, remove, upsertAtt};
+
+    if (!supabase || !online) {
+      mergeOfflineAction(table, { type: 'upsert', row, onConflict: 'student_id,date' });
+      toast('Attendance saved offline — will sync later','info');
+      return;
+    }
+
+    try {
+      const payload = { student_id, date, status, class: cls };
+      await supabase.from('attendance').upsert(payload, { onConflict: 'student_id,date' });
+    } catch (err) {
+      mergeOfflineAction(table, { type: 'upsert', row, onConflict: 'student_id,date' });
+      toast('Attendance saved offline — will sync later','info');
+    }
+  }, [data, online, table, toast]);
+
+  return { data, add, update, remove, upsertAtt };
 }
 
 // ─── TOAST PROVIDER ─────────────────────────
@@ -1290,12 +1530,15 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
   const [smsModal,setSmsModal]=useState(false);
   const [expModal,setExpModal]=useState(false);
   const [fCls,setFCls]=useState('');
+  const [feeTypeFilter,setFeeTypeFilter]=useState('');
   const [form,setForm]=useState(BLANK_FEE);
   const F=k=>e=>setForm(p=>({...p,[k]:e.target.value}));
 
   const list=fees.filter(f=>{
     const s=students.find(st=>st.id===f.student_id);
-    return(tab==='all'||f.status===tab)&&(!fCls||s?.class===fCls);
+    return (tab==='all'||f.status===tab)
+      &&(!fCls||s?.class===fCls)
+      &&(!feeTypeFilter||f.fee_type===feeTypeFilter);
   });
   const exportRows=list.map(f=>({
     Student: students.find(st=>st.id===f.student_id)?.name || 'Unknown',
@@ -1329,12 +1572,10 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
             <button key={t} className={`tab${tab===t?' active':''}`} onClick={()=>setTab(t)}>{t[0].toUpperCase()+t.slice(1)}</button>
           ))}
         </div>
-        <select className="filter-sel" value={fCls} onChange={e=>setFCls(e.target.value)}>
-          <option value="">All Classes</option>
-          {SCHOOL_LEVELS.map(lvl=>(
-            <optgroup key={lvl.label} label={`── ${lvl.label} ──`}>
-              {lvl.classes.map(c=><option key={c} value={c}>{c}</option>)}
-            </optgroup>
+          <select className="filter-sel" value={feeTypeFilter} onChange={e=>setFeeTypeFilter(e.target.value)}>
+            <option value="">All Fee Types</option>
+            {FEE_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+          </select>
           ))}
         </select>
         <span style={{marginLeft:'auto',fontSize:12,color:'var(--gray500)',fontWeight:600}}>{list.length} records</span>
@@ -1607,6 +1848,7 @@ const NAV_TEACHER = [
 function AppShell({user,onLogout}) {
   const [page,setPage]           = useState('dashboard');
   const [sidebarOpen,setSidebar] = useState(false);
+  const online = useOnline();
 
   const stu = useTable('students');
   const tch = useTable('teachers');
@@ -1685,13 +1927,21 @@ function AppShell({user,onLogout}) {
               <p>{user.role==='admin'?'Administrator':'Teacher'} · {user.name}</p>
             </div>
           </div>
-          <div className="topbar-right">
+          <div className="topbar-right" style={{alignItems:'center'}}>
+            <span style={{marginRight:12,fontSize:12,fontWeight:600,color:online?'var(--g700)':'var(--red)'}}>{online ? 'Online' : 'Offline'}</span>
             <button className="topbar-action" title="Notifications"><FontAwesomeIcon icon={faBell}/></button>
             <button className="btn btn-secondary btn-sm" onClick={onLogout}>
               <FontAwesomeIcon icon={faSignOutAlt}/> Sign Out
             </button>
           </div>
         </div>
+
+        {!online && (
+          <div className="alert alert-warning" style={{margin:'0 0 18px 0',display:'flex',alignItems:'center',gap:10}}>
+            <FontAwesomeIcon icon={faInfoCircle}/>
+            <span>Offline mode enabled. Changes will queue locally and sync when you are back online.</span>
+          </div>
+        )}
 
         <div className="content">
           {page==='dashboard'    &&<Dashboard     user={user} students={stu.data} teachers={tch.data} attendance={att.data} grades={grd.data} fees={fee.data} announcements={ann.data} profiles={prof.data}/>}
@@ -1714,16 +1964,30 @@ function AppShell({user,onLogout}) {
 export default function App() {
   const [page,setPage] = useState('welcome');
   const [user,setUser] = useState(null);
+  const [online,setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  useEffect(() => {
+    const handleOnline = () => setOnline(true);
+    const handleOffline = () => setOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const handleLogin  = u => { setUser(u); setPage('app'); };
   const handleLogout = () => { setUser(null); setPage('welcome'); };
 
   return (
     <ToastProvider>
-      {page==='welcome'  && <WelcomePage  onLogin={()=>setPage('login')} onRegister={()=>setPage('register')}/>}
-      {page==='login'    && <LoginPage    onLogin={handleLogin} onRegister={()=>setPage('register')} onBack={()=>setPage('welcome')}/>}
-      {page==='register' && <RegisterPage onBack={()=>setPage('login')}/>}
-      {page==='app' && user && <AppShell user={user} onLogout={handleLogout}/>}
+      <OnlineCtx.Provider value={online}>
+        {page==='welcome'  && <WelcomePage  onLogin={()=>setPage('login')} onRegister={()=>setPage('register')}/>}
+        {page==='login'    && <LoginPage    onLogin={handleLogin} onRegister={()=>setPage('register')} onBack={()=>setPage('welcome')}/>}
+        {page==='register' && <RegisterPage onBack={()=>setPage('login')}/>}
+        {page==='app' && user && <AppShell user={user} onLogout={handleLogout}/>}
+      </OnlineCtx.Provider>
     </ToastProvider>
   );
 }
