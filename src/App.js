@@ -1531,6 +1531,7 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
   const [expModal,setExpModal]=useState(false);
   const [fCls,setFCls]=useState('');
   const [feeTypeFilter,setFeeTypeFilter]=useState('');
+  const [newFeeType,setNewFeeType]=useState('');
   const [form,setForm]=useState(BLANK_FEE);
   const F=k=>e=>setForm(p=>({...p,[k]:e.target.value}));
 
@@ -1554,7 +1555,7 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
   const pending   =fees.filter(f=>f.status==='pending').reduce((s,f)=>s+Number(f.amount),0);
   const overdueAmt=fees.filter(f=>f.status==='overdue').reduce((s,f)=>s+Number(f.amount),0);
 
-  const save    =()=>{if(!form.student_id||!form.amount)return alert('Fill required fields');onAdd(form);setModal(false);setForm(BLANK_FEE);};
+  const save    =()=>{if(!form.student_id||!form.amount)return alert('Fill required fields');onAdd(form);setModal(false);setNewFeeType('');setForm(BLANK_FEE);};
   const markPaid=id=>onUpdate(id,{status:'paid',paid_date:dateToday()});
   const del=id=>{ if(window.confirm('Delete this fee record?')) onDelete(id); };
 
@@ -1587,7 +1588,17 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
         <span style={{marginLeft:'auto',fontSize:12,color:'var(--gray500)',fontWeight:600}}>{list.length} records</span>
         <button className="btn btn-secondary btn-sm" onClick={()=>setExpModal(true)}><FontAwesomeIcon icon={faDownload}/></button>
         <button className="btn btn-secondary btn-sm" onClick={()=>setSmsModal(true)}><FontAwesomeIcon icon={faSms}/> SMS</button>
-        <button className="btn btn-primary btn-sm"   onClick={()=>setModal(true)}><FontAwesomeIcon icon={faPlus}/> Add Fee</button>
+        <select className="filter-sel" value={newFeeType} onChange={e=>{
+            const selected = e.target.value;
+            setNewFeeType(selected);
+            if(selected){
+              setForm({...BLANK_FEE, fee_type:selected});
+              setModal(true);
+            }
+          }}>
+          <option value="">New Fee…</option>
+          {FEE_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+        </select>
       </div>
 
       <div className="table-wrap">
@@ -1616,7 +1627,7 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
       </div>
 
       {modal&&(
-        <Modal title="Add Fee Record" icon={faMoneyBillWave} onClose={()=>setModal(false)} onSave={save}>
+        <Modal title="Add Fee Record" icon={faMoneyBillWave} onClose={() => { setModal(false); setNewFeeType(''); setForm(BLANK_FEE); }} onSave={save}>
           <div className="form-group">
             <label>Student *</label>
             <select value={form.student_id} onChange={F('student_id')}>
