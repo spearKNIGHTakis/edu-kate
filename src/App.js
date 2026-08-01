@@ -1572,10 +1572,16 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
             <button key={t} className={`tab${tab===t?' active':''}`} onClick={()=>setTab(t)}>{t[0].toUpperCase()+t.slice(1)}</button>
           ))}
         </div>
-          <select className="filter-sel" value={feeTypeFilter} onChange={e=>setFeeTypeFilter(e.target.value)}>
-            <option value="">All Fee Types</option>
-            {FEE_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
-          </select>
+        <select className="filter-sel" value={feeTypeFilter} onChange={e=>setFeeTypeFilter(e.target.value)}>
+          <option value="">All Fee Types</option>
+          {FEE_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+        </select>
+        <select className="filter-sel" value={fCls} onChange={e=>setFCls(e.target.value)}>
+          <option value="">All Classes</option>
+          {SCHOOL_LEVELS.map(lvl=>(
+            <optgroup key={lvl.label} label={`── ${lvl.label} ──`}>
+              {lvl.classes.map(c=><option key={c} value={c}>{c}</option>)}
+            </optgroup>
           ))}
         </select>
         <span style={{marginLeft:'auto',fontSize:12,color:'var(--gray500)',fontWeight:600}}>{list.length} records</span>
