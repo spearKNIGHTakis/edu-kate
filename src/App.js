@@ -842,7 +842,7 @@ function RegisterPage({onBack}) {
     }
 
     const userId = data.user.id;
-    const { profile, profileError, teacherError } = await syncProfileAndTeacher(supabase, {
+    const { profileError, teacherError } = await syncProfileAndTeacher(supabase, {
       authUser: data.user,
       selectedRole: form.role,
       profileData: {
@@ -962,7 +962,7 @@ function RegisterPage({onBack}) {
 // ═══════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════
-function Dashboard({user,students,teachers,attendance,grades,fees,announcements,profiles=[]}) {
+export function Dashboard({user,students,teachers,attendance,grades,fees,announcements,profiles=[],onNavigate=()=>{}}) {
   const active   =students.filter(s=>s.status==='active').length;
   const today    =dateToday();
   const todayAtt =attendance.filter(a=>a.date===today);
@@ -972,6 +972,7 @@ function Dashboard({user,students,teachers,attendance,grades,fees,announcements,
   const totalFees=fees.reduce((s,f)=>s+Number(f.amount),0);
   const overdue  =fees.filter(f=>f.status==='overdue').length;
   const attRate  =todayAtt.length?Math.round((present/todayAtt.length)*100):0;
+  const pendingAttendance = todayAtt.length ? todayAtt.filter(a=>a.status!=='present').length : 0;
 
   const attStats=['present','absent','late','excused'].map(st=>({
     label:st[0].toUpperCase()+st.slice(1),
@@ -982,6 +983,22 @@ function Dashboard({user,students,teachers,attendance,grades,fees,announcements,
   const accountProfile = profiles.find(p => p.user_id === user.user_id || p.email === user.email) || user;
   const linkedTeacher = teachers.find(t => t.email === accountProfile.email || t.name === accountProfile.name);
 
+  const quickActions = user.role==='admin' ? [
+    {label:'Add Student', icon:faGraduationCap, target:'students', hint:'Create a new learner profile'},
+    {label:'Record Attendance', icon:faCalendarCheck, target:'attendance', hint:'Mark today’s present and absent students'},
+    {label:'Create Notice', icon:faBullhorn, target:'announcements', hint:'Keep staff and families updated'},
+    {label:'Review Fees', icon:faMoneyBillWave, target:'fees', hint:'Follow up on overdue balances'},
+  ] : [
+    {label:'Take Attendance', icon:faCalendarCheck, target:'attendance', hint:'Update your class register'},
+    {label:'Post Grade', icon:faChartBar, target:'grades', hint:'Enter the latest assessment results'},
+  ];
+
+  const attentionItems = [
+    overdue>0 ? {title:`${overdue} overdue fee${overdue>1?'s':''}`, detail:'Follow up on outstanding balances before they grow.', target:'fees'} : null,
+    pendingAttendance>0 ? {title:`${pendingAttendance} attendance record${pendingAttendance>1?'s':''} still pending`, detail:'Close today’s attendance before the end of the day.', target:'attendance'} : null,
+    announcements.length===0 ? {title:'No notices posted yet', detail:'Share a quick update to keep the school informed.', target:'announcements'} : null,
+  ].filter(Boolean);
+
   return (
     <div className="anim-up">
       {!IS_CONNECTED&&(
@@ -990,6 +1007,18 @@ function Dashboard({user,students,teachers,attendance,grades,fees,announcements,
           <span><strong>Supabase is not connected.</strong> Please configure <code>REACT_APP_ENABLE_LIVE_SUPABASE=true</code>, <code>REACT_APP_SUPABASE_URL</code>, and <code>REACT_APP_SUPABASE_ANON_KEY</code> in your .env file.</span>
         </div>
       )}
+      <div className="card dashboard-hero" style={{marginBottom:18}}>
+        <div className="dashboard-hero-copy">
+          <div className="dashboard-eyebrow">Today at a glance</div>
+          <h3>Welcome back, {accountProfile.name || user.name}.</h3>
+          <p>{user.role==='admin' ? 'Use the quick actions below to keep student records, attendance, and fees current.' : 'Your class dashboard is ready for the next attendance or grade update.'}</p>
+        </div>
+        <div className="dashboard-hero-meta">
+          <div className="info-tile"><div className="info-tile-label">Attendance</div><div className="info-tile-value">{attRate}% today</div></div>
+          <div className="info-tile"><div className="info-tile-label">Pending</div><div className="info-tile-value">{pendingAttendance || 0} records</div></div>
+        </div>
+      </div>
+
       <div className="card" style={{marginBottom:18}}>
         <div className="card-header"><span className="card-title"><FontAwesomeIcon icon={faUserShield}/> Supabase Profile Sync</span></div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
@@ -1008,6 +1037,19 @@ function Dashboard({user,students,teachers,attendance,grades,fees,announcements,
             <div style={{fontWeight:800}}>{linkedTeacher?.name || 'No linked teacher row'}</div>
             <div style={{fontSize:13,color:'var(--gray500)'}}>{linkedTeacher ? `${linkedTeacher.subject || 'Subject pending'} - ${linkedTeacher.class || 'No class'}` : 'Create a teacher record to make teacher access visible in Supabase'}</div>
           </div>
+        </div>
+      </div>
+
+      <div className="card" style={{marginBottom:18}}>
+        <div className="card-header"><span className="card-title"><FontAwesomeIcon icon={faChartLine}/> Quick Actions</span></div>
+        <div className="quick-action-grid">
+          {quickActions.map(action=>(
+            <button key={action.label} className="quick-action-card" onClick={()=>onNavigate(action.target)}>
+              <span className="quick-action-icon"><FontAwesomeIcon icon={action.icon}/></span>
+              <span className="quick-action-title">{action.label}</span>
+              <small>{action.hint}</small>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1047,16 +1089,26 @@ function Dashboard({user,students,teachers,attendance,grades,fees,announcements,
           </div>
         </div>
         <div className="card">
-          <div className="card-header"><span className="card-title"><FontAwesomeIcon icon={faBullhorn}/> Latest Notices</span></div>
-          {announcements.slice(0,3).map(a=>(
-            <div key={a.id} style={{padding:'8px 0',borderBottom:'1px solid var(--gray100)'}}>
-              <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:3}}>
-                <span className={`badge badge-${a.priority==='high'?'red':'blue'}`}>{a.priority}</span>
-                <span style={{fontSize:13,fontWeight:700}}>{a.title}</span>
-              </div>
-              <p style={{fontSize:12,color:'var(--gray500)'}}>{a.content.substring(0,80)}…</p>
+          <div className="card-header"><span className="card-title"><FontAwesomeIcon icon={faExclamationTriangle}/> Needs Attention</span></div>
+          {attentionItems.length ? (
+            <div className="attention-list">
+              {attentionItems.map(item=>(
+                <div key={item.title} className="attention-item">
+                  <div>
+                    <div className="attention-title">{item.title}</div>
+                    <div className="attention-detail">{item.detail}</div>
+                  </div>
+                  <button className="btn btn-secondary btn-sm" onClick={()=>onNavigate(item.target)}>{item.target==='fees'?'Review':'Open'}</button>
+                </div>
+              ))}
             </div>
-          ))}
+          ) : (
+            <div className="empty-state" style={{padding:'16px 8px'}}>
+              <div className="empty-state-icon" style={{fontSize:28}}><FontAwesomeIcon icon={faCheckCircle}/></div>
+              <h3>Everything looks on track</h3>
+              <p>There are no urgent items at the moment.</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1983,7 +2035,7 @@ function AppShell({user,onLogout}) {
         )}
 
         <div className="content">
-          {page==='dashboard'    &&<Dashboard     user={user} students={stu.data} teachers={tch.data} attendance={att.data} grades={grd.data} fees={fee.data} announcements={ann.data} profiles={prof.data}/>}
+          {page==='dashboard'    &&<Dashboard     user={user} students={stu.data} teachers={tch.data} attendance={att.data} grades={grd.data} fees={fee.data} announcements={ann.data} profiles={prof.data} onNavigate={navigate}/>}
           {page==='students'     &&<Students      students={stu.data} onAdd={stu.add} onEdit={stu.update} onDelete={stu.remove}/>}
           {page==='teachers'     &&<Teachers      teachers={tch.data} onAdd={tch.add} onEdit={tch.update} onDelete={tch.remove}/>}
           {page==='attendance'   &&<Attendance    user={user} students={stu.data} attendance={att.data} onRecord={att.upsertAtt}/>}

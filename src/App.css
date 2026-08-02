@@ -179,6 +179,23 @@ textarea{resize:vertical;min-height:80px}
 .card-title{font-size:14.5px;font-weight:700;color:var(--gray800);display:flex;align-items:center;gap:8px}
 .card-title svg{color:var(--g600)}
 
+/* DASHBOARD */
+.dashboard-hero{display:flex;justify-content:space-between;align-items:center;gap:16px;background:linear-gradient(120deg,var(--g50) 0%,#ecfdf3 100%);border:1px solid var(--g100)}
+.dashboard-hero-copy h3{font-family:var(--font-head);font-size:22px;color:var(--g900);margin-bottom:6px}
+.dashboard-hero-copy p{color:var(--gray500);font-size:13.5px;max-width:620px}
+.dashboard-eyebrow{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--g700);margin-bottom:8px}
+.dashboard-hero-meta{display:grid;gap:10px;min-width:220px}
+.quick-action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.quick-action-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:14px;border:1px solid var(--gray200);border-radius:10px;background:var(--gray50);text-align:left;cursor:pointer;transition:var(--transition)}
+.quick-action-card:hover{border-color:var(--g400);background:var(--g50);transform:translateY(-2px)}
+.quick-action-icon{width:36px;height:36px;border-radius:10px;background:var(--g50);color:var(--g700);display:flex;align-items:center;justify-content:center;font-size:14px}
+.quick-action-title{font-weight:800;color:var(--gray800)}
+.quick-action-card small{font-size:11px;color:var(--gray500)}
+.attention-list{display:grid;gap:10px}
+.attention-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--gray200);border-radius:10px;background:var(--gray50)}
+.attention-title{font-weight:700;color:var(--gray800);font-size:13px}
+.attention-detail{font-size:11.5px;color:var(--gray500);margin-top:2px}
+
 /* STAT CARDS */
 .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:20px}
 @media(max-width:480px){.stats-grid{grid-template-columns:1fr 1fr;gap:10px}}
