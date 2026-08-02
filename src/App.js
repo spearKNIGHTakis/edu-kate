@@ -792,9 +792,12 @@ function LoginPage({onLogin,onRegister,onBack}) {
             </div>
           </div>
 
-          <div className="alert alert-success" style={{fontSize:12}}>
-            <FontAwesomeIcon icon={faInfoCircle}/>
-            <div><strong>Note:</strong> This app requires Supabase auth and live tables to work. Set valid Supabase credentials in your environment and sign in with a registered user account.</div>
+          <div className="auth-highlight-card">
+            <div className="auth-highlight-icon"><FontAwesomeIcon icon={faInfoCircle}/></div>
+            <div>
+              <strong>Need live access?</strong>
+              <div>Connect your Supabase credentials and sign in with a registered account to unlock the full dashboard.</div>
+            </div>
           </div>
 
           <button className="btn btn-primary btn-block btn-lg" onClick={handleLogin} disabled={busy}>
@@ -895,7 +898,18 @@ function RegisterPage({onBack}) {
       <div className="auth-main">
         <div className="auth-box anim-up">
           <div style={{marginBottom:8}}><button className="btn btn-ghost btn-sm" onClick={onBack}><FontAwesomeIcon icon={faArrowLeft}/> Back to Login</button></div>
-          <div className="auth-box-hd"><h2>Create Account</h2><p>Fill in your details to get started</p></div>
+          <div className="auth-box-hd">
+            <h2>Create Account</h2>
+            <p>Set up your school account in a few simple steps.</p>
+          </div>
+
+          <div className="auth-highlight-card">
+            <div className="auth-highlight-icon"><FontAwesomeIcon icon={faRocket}/></div>
+            <div>
+              <strong>Start tracking quickly</strong>
+              <div>Choose your role and class so the right tools appear as soon as your account is ready.</div>
+            </div>
+          </div>
 
           <div className="role-grid">
             <div className={`role-card${form.role==='admin'?' active':''}`} onClick={()=>setForm(p=>({...p,role:'admin'}))}>
@@ -998,6 +1012,25 @@ export function Dashboard({user,students,teachers,attendance,grades,fees,announc
     pendingAttendance>0 ? {title:`${pendingAttendance} attendance record${pendingAttendance>1?'s':''} still pending`, detail:'Close today’s attendance before the end of the day.', target:'attendance'} : null,
     announcements.length===0 ? {title:'No notices posted yet', detail:'Share a quick update to keep the school informed.', target:'announcements'} : null,
   ].filter(Boolean);
+
+  const recentActivity = [
+    ...grades.slice(0,2).map(g => ({
+      title: `${students.find(st=>st.id===g.student_id)?.name || 'Student'} received ${letterGrade(g.score,g.max_score)} in ${g.subject}`,
+      detail: fmtDate(g.date),
+      target: 'grades',
+    })),
+    ...announcements.slice(0,2).map(a => ({
+      title: a.title,
+      detail: a.content.substring(0,70),
+      target: 'announcements',
+    })),
+  ].slice(0,4);
+
+  const trendSummary = [
+    {label:'Attendance', value:`${attRate}%`, tone:'good'},
+    {label:'Fee Collection', value:`${totalFees ? Math.round((collected/totalFees)*100) : 0}%`, tone:'good'},
+    {label:'Overdue', value:`${overdue}`, tone: overdue ? 'warn' : 'good'},
+  ];
 
   return (
     <div className="anim-up">
@@ -1109,6 +1142,33 @@ export function Dashboard({user,students,teachers,attendance,grades,fees,announc
               <p>There are no urgent items at the moment.</p>
             </div>
           )}
+        </div>
+      </div>
+
+      <div className="card" style={{marginBottom:20}}>
+        <div className="card-header"><span className="card-title"><FontAwesomeIcon icon={faChartLine}/> School Trends</span></div>
+        <div className="trend-grid">
+          {trendSummary.map(item=>(
+            <div key={item.label} className={`trend-pill ${item.tone}`}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header"><span className="card-title"><FontAwesomeIcon icon={faBell}/> Recent Activity</span></div>
+        <div className="attention-list">
+          {recentActivity.map((item,index)=>(
+            <div key={`${item.title}-${index}`} className="attention-item">
+              <div>
+                <div className="attention-title">{item.title}</div>
+                <div className="attention-detail">{item.detail}</div>
+              </div>
+              <button className="btn btn-secondary btn-sm" onClick={()=>onNavigate(item.target)}>View</button>
+            </div>
+          ))}
         </div>
       </div>
 
