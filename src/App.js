@@ -8,8 +8,8 @@ import {
   faFileCsv, faSms, faCheck, faUserShield, faUserTie, faUsers, faBookOpen,
   faChartLine, faCheckCircle, faTimesCircle, faClock, faExclamationTriangle,
   faInfoCircle, faPhone, faPrint, faLock, faUser, faEyeSlash, faEye,
-  faArrowRight, faArrowLeft, faStar, faRocket, faShieldAlt, faDatabase,
-  faEnvelope, faBell
+  faArrowRight, faArrowLeft, faArrowUp, faStar, faRocket, faShieldAlt, faDatabase,
+  faEnvelope, faBell, faCalculator, faAddressBook, faWallet
 } from '@fortawesome/free-solid-svg-icons';
 import './App.css';
 import { shouldUseLiveSupabase, getSupabaseConfig } from './supabaseConfig';
@@ -45,6 +45,9 @@ const SUBJECTS_BY_LEVEL = {
 };
 const ALL_SUBJECTS = [...new Set(Object.values(SUBJECTS_BY_LEVEL).flat())];
 const FEE_TYPES = ['Tuition','Canteen','PTA Levy','Examination Fee','Sports Fee','Library Fee','Uniform'];
+const CONTACT_ROLES = ['Parent','Guardian','Teacher','Admin','Accountant'];
+const FINANCIAL_TYPES = ['income','expense'];
+const FINANCIAL_CATEGORIES = ['Tuition','Canteen','Donations','Grants','Salaries','Maintenance','Utilities','Stationery','Transport'];
 
 const OnlineCtx = createContext(true);
 const useOnline = () => useContext(OnlineCtx);
@@ -976,10 +979,14 @@ function RegisterPage({onBack}) {
 // ═══════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════
-export function Dashboard({user,students,teachers,attendance,grades,fees,announcements,profiles=[],onNavigate=()=>{}}) {
+export function Dashboard({user,students,teachers,attendance,grades,fees,announcements,profiles=[],contacts=[],financials=[],onNavigate=()=>{}}) {
   const active   =students.filter(s=>s.status==='active').length;
   const today    =dateToday();
   const todayAtt =attendance.filter(a=>a.date===today);
+  const totalIncome = financials.filter(f=>f.record_type==='income').reduce((sum,f)=>sum+Number(f.amount||0),0);
+  const totalExpenses = financials.filter(f=>f.record_type==='expense').reduce((sum,f)=>sum+Number(f.amount||0),0);
+  const netBalance = totalIncome - totalExpenses;
+  const contactCount = contacts.length;
   const present  =todayAtt.filter(a=>a.status==='present').length;
   const avgScore =grades.length?Math.round(grades.reduce((s,g)=>s+(g.score/g.max_score)*100,0)/grades.length):0;
   const collected=fees.filter(f=>f.status==='paid').reduce((s,f)=>s+Number(f.amount),0);
@@ -1002,6 +1009,11 @@ export function Dashboard({user,students,teachers,attendance,grades,fees,announc
     {label:'Record Attendance', icon:faCalendarCheck, target:'attendance', hint:'Mark today’s present and absent students'},
     {label:'Create Notice', icon:faBullhorn, target:'announcements', hint:'Keep staff and families updated'},
     {label:'Review Fees', icon:faMoneyBillWave, target:'fees', hint:'Follow up on overdue balances'},
+  ] : user.role==='accountant' ? [
+    {label:'Add Income', icon:faWallet, target:'financials', hint:'Record a new income item'},
+    {label:'Add Expense', icon:faWallet, target:'financials', hint:'Track outgoing costs'},
+    {label:'Manage Fees', icon:faMoneyBillWave, target:'fees', hint:'Review school fee records'},
+    {label:'Contacts', icon:faAddressBook, target:'contacts', hint:'View guardians and staff contacts'},
   ] : [
     {label:'Take Attendance', icon:faCalendarCheck, target:'attendance', hint:'Update your class register'},
     {label:'Post Grade', icon:faChartBar, target:'grades', hint:'Enter the latest assessment results'},
@@ -1030,6 +1042,8 @@ export function Dashboard({user,students,teachers,attendance,grades,fees,announc
     {label:'Attendance', value:`${attRate}%`, tone:'good'},
     {label:'Fee Collection', value:`${totalFees ? Math.round((collected/totalFees)*100) : 0}%`, tone:'good'},
     {label:'Overdue', value:`${overdue}`, tone: overdue ? 'warn' : 'good'},
+    {label:'Income', value: fmtMoney(totalIncome), tone:'good'},
+    {label:'Expenses', value: fmtMoney(totalExpenses), tone: totalExpenses ? 'warn' : 'good'},
   ];
 
   return (
@@ -1648,7 +1662,10 @@ function Grades({user,students,grades,onAdd,onDelete}) {
 // ═══════════════════════════════════════════
 // FEES
 // ═══════════════════════════════════════════
-const BLANK_FEE={student_id:'',amount:'',fee_type:'Tuition',due_date:'',status:'pending',term:'Term 1 2026'};
+const BLANK_FEE={student_id:'',amount:'',fee_type:'Tuition',days:'',rate_per_day:'10',due_date:'',status:'pending',term:'Term 1 2026'};
+
+const BLANK_CONTACT={name:'',role:'Parent',email:'',phone:'',relation:'Guardian',class:'',notes:'',status:'active'};
+const BLANK_FINANCIAL={record_type:'income',category:'Tuition',student_id:'',class:'',amount:'',date:dateToday(),term:'Term 1 2026',description:''};
 
 function Fees({students,fees,onAdd,onUpdate,onDelete}) {
   const [tab,setTab]=useState('all');
@@ -1658,6 +1675,7 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
   const [expModal,setExpModal]=useState(false);
   const [fCls,setFCls]=useState('');
   const [form,setForm]=useState(BLANK_FEE);
+  const [editingFee,setEditingFee]=useState(null);
   const F=k=>e=>setForm(p=>({...p,[k]:e.target.value}));
 
   const list=fees.filter(f=>{
@@ -1668,12 +1686,15 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
   });
   const exportRows=list.map(f=>({
     Student: students.find(st=>st.id===f.student_id)?.name || 'Unknown',
-    Class: students.find(st=>st.id===f.student_id)?.class || '—',
+    Class: students.find(st=>st.student_id===f.student_id)?.class || '—',
     FeeType: f.fee_type,
     Amount: fmtMoney(f.amount),
+    Days: f.days || '—',
+    Rate: f.rate_per_day ? `GH₵ ${Number(f.rate_per_day).toFixed(2)}` : '—',
     DueDate: fmtDate(f.due_date),
     PaidDate: fmtDate(f.paid_date),
     Status: f.status,
+    Term: f.term,
   }));
 
   const collected =fees.filter(f=>f.status==='paid').reduce((s,f)=>s+Number(f.amount),0);
@@ -1681,6 +1702,7 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
   const overdueAmt=fees.filter(f=>f.status==='overdue').reduce((s,f)=>s+Number(f.amount),0);
 
   const openAddFee = () => {
+    setEditingFee(null);
     setShowForm(true);
     setForm({
       ...BLANK_FEE,
@@ -1688,11 +1710,36 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
     });
   };
 
+  const openEditFee = (feeRecord) => {
+    setEditingFee(feeRecord.id);
+    setForm({
+      student_id: feeRecord.student_id || '',
+      amount: feeRecord.amount || '',
+      fee_type: feeRecord.fee_type || 'Tuition',
+      days: feeRecord.days || '',
+      rate_per_day: feeRecord.rate_per_day || '10',
+      due_date: feeRecord.due_date || '',
+      status: feeRecord.status || 'pending',
+      term: feeRecord.term || 'Term 1 2026',
+      paid_date: feeRecord.paid_date || '',
+    });
+    setShowForm(true);
+  };
+
   const save = () => {
     if(!form.student_id||!form.amount) return alert('Fill required fields');
-    onAdd(form);
+    const payload = {
+      ...form,
+      amount: form.fee_type==='Canteen' ? String((Number(form.days)||0) * (Number(form.rate_per_day)||0)) : form.amount,
+    };
+    if (editingFee) {
+      onUpdate(editingFee, payload);
+    } else {
+      onAdd(payload);
+    }
     setShowForm(false);
     setForm(BLANK_FEE);
+    setEditingFee(null);
   };
   const markPaid=id=>onUpdate(id,{status:'paid',paid_date:dateToday()});
   const del=id=>{ if(window.confirm('Delete this fee record?')) onDelete(id); };
@@ -1739,11 +1786,18 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
               ? <select value={form.fee_type} onChange={F('fee_type')}>{FEE_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select>
               : <input value={form.fee_type} readOnly style={{opacity:.8,cursor:'not-allowed'}} />
             }</div>
-            <div className="form-group"><label>Amount (GH₵) *</label><input type="number" min="0" value={form.amount} onChange={F('amount')} placeholder="0.00"/></div>
+            <div className="form-group"><label>Amount (GH₵) *</label><input type="number" min="0" value={form.amount} onChange={F('amount')} placeholder="0.00" disabled={form.fee_type==='Canteen'} /></div>
             <div className="form-group"><label>Due Date</label><input type="date" value={form.due_date} onChange={F('due_date')}/></div>
           </div>
+          {form.fee_type==='Canteen' && (
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:14,marginTop:8}}>
+              <div className="form-group"><label>Days *</label><input type="number" min="0" value={form.days} onChange={F('days')} placeholder="Days served"/></div>
+              <div className="form-group"><label>Rate per Day (GH₵) *</label><input type="number" min="0" value={form.rate_per_day} onChange={F('rate_per_day')} placeholder="Rate per day"/></div>
+              <div className="form-group" style={{alignSelf:'end'}}><label>Total Canteen</label><div style={{padding:'11px 12px',borderRadius:'10px',border:'1.5px solid var(--gray300)',background:var(--gray50)}}>GH₵ {((Number(form.days)||0)*(Number(form.rate_per_day)||0)).toFixed(2)}</div></div>
+            </div>
+          )}
           <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:16}}>
-            <button className="btn btn-secondary btn-sm" onClick={()=>{setShowForm(false);setForm(BLANK_FEE);}}>Cancel</button>
+            <button className="btn btn-secondary btn-sm" onClick={()=>{setShowForm(false);setForm(BLANK_FEE);setEditingFee(null);}}>Cancel</button>
             <button className="btn btn-primary btn-sm" onClick={save}><FontAwesomeIcon icon={faCheck}/> Save Fee</button>
           </div>
         </div>
@@ -1776,7 +1830,10 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
                   <td style={{fontSize:12,color:'var(--gray400)'}}>{fmtDate(f.paid_date)}</td>
                   <td><span className={`badge badge-${f.status==='paid'?'green':f.status==='overdue'?'red':'yellow'}`}>{f.status}</span></td>
                   <td>{f.status!=='paid'&&<button className="btn btn-success btn-sm" onClick={()=>markPaid(f.id)}><FontAwesomeIcon icon={faCheck}/> Paid</button>}</td>
-                  <td><button className="btn btn-danger btn-sm" onClick={()=>del(f.id)}><FontAwesomeIcon icon={faTrash}/></button></td>
+                  <td><div style={{display:'flex',gap:6}}>
+                    <button className="btn btn-secondary btn-sm" onClick={()=>openEditFee(f)}><FontAwesomeIcon icon={faEdit}/></button>
+                    <button className="btn btn-danger btn-sm" onClick={()=>del(f.id)}><FontAwesomeIcon icon={faTrash}/></button>
+                  </div></td>
                 </tr>
               );
             })}
@@ -1795,6 +1852,188 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
 // ANNOUNCEMENTS
 // ═══════════════════════════════════════════
 const BLANK_ANN={title:'',content:'',target_audience:'all',priority:'normal',created_by:''};
+
+function Financials({user,students,financials,onAdd,onUpdate,onDelete}) {
+  const [modal,setModal]=useState(false);
+  const [editing,setEditing]=useState(null);
+  const [search,setSearch]=useState('');
+  const [filterType,setFilterType]=useState('');
+  const [filterCategory,setFilterCategory]=useState('');
+  const [form,setForm]=useState(BLANK_FINANCIAL);
+  const F=k=>e=>setForm(p=>({...p,[k]:e.target.value}));
+
+  const filtered = financials.filter(item => {
+    const matchesSearch = !search || item.description?.toLowerCase().includes(search.toLowerCase()) || item.category?.toLowerCase().includes(search.toLowerCase()) || item.record_type?.toLowerCase().includes(search.toLowerCase());
+    return matchesSearch
+      &&(!filterType||item.record_type===filterType)
+      &&(!filterCategory||item.category===filterCategory);
+  });
+
+  const totalIncome = filtered.filter(f=>f.record_type==='income').reduce((sum,f)=>sum+Number(f.amount||0),0);
+  const totalExpenses = filtered.filter(f=>f.record_type==='expense').reduce((sum,f)=>sum+Number(f.amount||0),0);
+  const netTotal = totalIncome - totalExpenses;
+
+  const openAdd = () => { setEditing(null); setForm({...BLANK_FINANCIAL}); setModal(true); };
+  const openEdit = item => { setEditing(item.id); setForm({...item}); setModal(true); };
+  const save = () => {
+    if(!form.record_type||!form.category||!form.amount||!form.date) return alert('Fill all required fields');
+    if (editing) {
+      onUpdate(editing, form);
+    } else {
+      onAdd(form);
+    }
+    setModal(false);
+    setForm(BLANK_FINANCIAL);
+    setEditing(null);
+  };
+  const remove = id => { if(window.confirm('Delete this entry?')) onDelete(id); };
+
+  const rows = filtered.map(entry => {
+    const student = students.find(s=>s.id===entry.student_id);
+    return {
+      ...entry,
+      studentName: student?.name || '—',
+      className: student?.class || entry.class || '—',
+    };
+  });
+
+  return (
+    <div className="anim-up">
+      <div className="stats-grid" style={{marginBottom:18}}>
+        <div className="stat-card green"><div className="stat-card-icon"><FontAwesomeIcon icon={faWallet}/></div><div className="stat-value" style={{fontSize:18}}>{fmtMoney(totalIncome)}</div><div className="stat-label">Income</div></div>
+        <div className="stat-card red"><div className="stat-card-icon"><FontAwesomeIcon icon={faWallet}/></div><div className="stat-value" style={{fontSize:18}}>{fmtMoney(totalExpenses)}</div><div className="stat-label">Expenses</div></div>
+        <div className="stat-card gold"><div className="stat-card-icon"><FontAwesomeIcon icon={faCheckCircle}/></div><div className="stat-value" style={{fontSize:18}}>{fmtMoney(netTotal)}</div><div className="stat-label">Net</div></div>
+      </div>
+
+      <div className="filter-bar">
+        <div className="search-wrap"><FontAwesomeIcon icon={faSearch} className="search-icon"/><input placeholder="Search income / expenses…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
+        <select className="filter-sel" value={filterType} onChange={e=>setFilterType(e.target.value)}>
+          <option value="">All Types</option>
+          {FINANCIAL_TYPES.map(type=><option key={type} value={type}>{type[0].toUpperCase()+type.slice(1)}</option>)}
+        </select>
+        <select className="filter-sel" value={filterCategory} onChange={e=>setFilterCategory(e.target.value)}>
+          <option value="">All Categories</option>
+          {FINANCIAL_CATEGORIES.map(cat=><option key={cat} value={cat}>{cat}</option>)}
+        </select>
+        <span style={{marginLeft:'auto',fontSize:12,color:'var(--gray500)',fontWeight:600}}>{rows.length} entries</span>
+        <button className="btn btn-primary btn-sm" onClick={openAdd}><FontAwesomeIcon icon={faPlus}/> Add Entry</button>
+      </div>
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Type</th><th>Category</th><th>Amount</th><th>Student</th><th>Class</th><th>Date</th><th>Description</th><th>Actions</th></tr>
+          </thead>
+          <tbody>
+            {rows.map(entry=> (
+              <tr key={entry.id}>
+                <td><span className={`badge badge-${entry.record_type==='income'?'green':'red'}`}>{entry.record_type}</span></td>
+                <td>{entry.category}</td>
+                <td style={{fontWeight:700}}>{fmtMoney(entry.amount)}</td>
+                <td>{entry.studentName}</td>
+                <td>{entry.className}</td>
+                <td style={{fontSize:12,color:'var(--gray500)'}}>{fmtDate(entry.date)}</td>
+                <td style={{fontSize:12,color:'var(--gray500)'}}>{entry.description || '—'}</td>
+                <td><div style={{display:'flex',gap:6}}><button className="btn btn-secondary btn-sm" onClick={()=>openEdit(entry)}><FontAwesomeIcon icon={faEdit}/></button><button className="btn btn-danger btn-sm" onClick={()=>remove(entry.id)}><FontAwesomeIcon icon={faTrash}/></button></div></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!rows.length && <div className="empty-state"><div className="empty-state-icon"><FontAwesomeIcon icon={faWallet}/></div><h3>No financial records</h3><p>Create income or expense entries to track school funds.</p></div>}
+      </div>
+
+      {modal && (
+        <Modal title={editing ? 'Edit Financial Entry' : 'New Financial Entry'} icon={faWallet} onClose={()=>{setModal(false);setEditing(null);setForm(BLANK_FINANCIAL);}} onSave={save}>
+          <div className="form-row">
+            <div className="form-group"><label>Type *</label><select value={form.record_type} onChange={F('record_type')}>{FINANCIAL_TYPES.map(type=><option key={type} value={type}>{type[0].toUpperCase()+type.slice(1)}</option>)}</select></div>
+            <div className="form-group"><label>Category *</label><select value={form.category} onChange={F('category')}>{FINANCIAL_CATEGORIES.map(cat=><option key={cat} value={cat}>{cat}</option>)}</select></div>
+          </div>
+          <div className="form-row">
+            <div className="form-group"><label>Amount *</label><input type="number" min="0" value={form.amount} onChange={F('amount')}/></div>
+            <div className="form-group"><label>Date *</label><input type="date" value={form.date} onChange={F('date')}/></div>
+          </div>
+          <div className="form-row">
+            <div className="form-group"><label>Student</label><select value={form.student_id} onChange={F('student_id')}><option value="">None</option>{students.map(s=><option key={s.id} value={s.id}>{s.name} — {s.class}</option>)}</select></div>
+            <div className="form-group"><label>Term</label><input value={form.term} onChange={F('term')}/></div>
+          </div>
+          <div className="form-group"><label>Description</label><textarea value={form.description} onChange={F('description')} placeholder="Optional notes"/></div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function Contacts({contacts,onAdd,onEdit,onDelete}) {
+  const [modal,setModal]=useState(false);
+  const [editing,setEditing]=useState(null);
+  const [search,setSearch]=useState('');
+  const [filterRole,setFilterRole]=useState('');
+  const [form,setForm]=useState(BLANK_CONTACT);
+  const F=k=>e=>setForm(p=>({...p,[k]:e.target.value}));
+
+  const filtered = contacts.filter(item => {
+    const q=search.toLowerCase();
+    return (!search || item.name?.toLowerCase().includes(q) || item.email?.toLowerCase().includes(q) || item.phone?.toLowerCase().includes(q) || item.relation?.toLowerCase().includes(q))
+      &&(!filterRole||item.role===filterRole);
+  });
+
+  const openAdd = () => { setEditing(null); setForm(BLANK_CONTACT); setModal(true); };
+  const openEdit = item => { setEditing(item.id); setForm({...item}); setModal(true); };
+  const save = () => { if(!form.name||!form.role||!form.phone) return alert('Fill all required fields'); if(editing){onEdit(editing, form);} else {onAdd(form);} setModal(false); setForm(BLANK_CONTACT); setEditing(null);} ;
+  const remove = id => { if(window.confirm('Delete this contact?')) onDelete(id); };
+
+  return (
+    <div className="anim-up">
+      <div className="filter-bar">
+        <div className="search-wrap"><FontAwesomeIcon icon={faSearch} className="search-icon"/><input placeholder="Search contacts…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
+        <select className="filter-sel" value={filterRole} onChange={e=>setFilterRole(e.target.value)}>
+          <option value="">All Roles</option>
+          {CONTACT_ROLES.map(role=><option key={role} value={role}>{role}</option>)}
+        </select>
+        <span style={{marginLeft:'auto',fontSize:12,color:'var(--gray500)',fontWeight:600}}>{filtered.length} contacts</span>
+        <button className="btn btn-primary btn-sm" onClick={openAdd}><FontAwesomeIcon icon={faPlus}/> Add Contact</button>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Role</th><th>Relation</th><th>Phone</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>
+            {filtered.map(contact=>(
+              <tr key={contact.id}>
+                <td>{contact.name}</td>
+                <td><span className="badge badge-blue">{contact.role}</span></td>
+                <td>{contact.relation}</td>
+                <td>{contact.phone}</td>
+                <td>{contact.email || '—'}</td>
+                <td><span className={`badge badge-${contact.status==='active'?'green':'gray'}`}>{contact.status}</span></td>
+                <td><div style={{display:'flex',gap:6}}><button className="btn btn-secondary btn-sm" onClick={()=>openEdit(contact)}><FontAwesomeIcon icon={faEdit}/></button><button className="btn btn-danger btn-sm" onClick={()=>remove(contact.id)}><FontAwesomeIcon icon={faTrash}/></button></div></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!filtered.length&&<div className="empty-state"><div className="empty-state-icon"><FontAwesomeIcon icon={faAddressBook}/></div><h3>No contacts</h3><p>Add contacts to track parents, guardians and staff.</p></div>}
+      </div>
+
+      {modal && (
+        <Modal title={editing ? 'Edit Contact' : 'Add Contact'} icon={faAddressBook} onClose={()=>{setModal(false);setEditing(null);setForm(BLANK_CONTACT);}} onSave={save}>
+          <div className="form-row">
+            <div className="form-group"><label>Name *</label><input value={form.name} onChange={F('name')}/></div>
+            <div className="form-group"><label>Role *</label><select value={form.role} onChange={F('role')}>{CONTACT_ROLES.map(role=><option key={role} value={role}>{role}</option>)}</select></div>
+          </div>
+          <div className="form-row">
+            <div className="form-group"><label>Relation</label><input value={form.relation} onChange={F('relation')}/></div>
+            <div className="form-group"><label>Class</label><input value={form.class} onChange={F('class')}/></div>
+          </div>
+          <div className="form-row">
+            <div className="form-group"><label>Phone *</label><input value={form.phone} onChange={F('phone')}/></div>
+            <div className="form-group"><label>Email</label><input type="email" value={form.email} onChange={F('email')}/></div>
+          </div>
+          <div className="form-group"><label>Notes</label><textarea value={form.notes} onChange={F('notes')} placeholder="Additional contact details"/></div>
+          <div className="form-group"><label>Status</label><select value={form.status} onChange={F('status')}><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
+        </Modal>
+      )}
+    </div>
+  );
+}
 
 function Announcements({user,announcements,onAdd,onDelete}) {
   const [modal,setModal]=useState(false);
@@ -1986,6 +2225,8 @@ const NAV_ADMIN  = [
   {id:'attendance',   label:'Attendance',   icon:faCalendarCheck},
   {id:'grades',       label:'Grades',       icon:faChartBar},
   {id:'fees',         label:'Fees',         icon:faMoneyBillWave},
+  {id:'financials',   label:'Income & Expenses', icon:faWallet},
+  {id:'contacts',     label:'Contacts',     icon:faAddressBook},
   {id:'announcements',label:'Announcements',icon:faBullhorn},
   {id:'settings',     label:'Settings',     icon:faCog},
 ];
@@ -1995,10 +2236,18 @@ const NAV_TEACHER = [
   {id:'grades',       label:'Grades',       icon:faChartBar},
   {id:'announcements',label:'Announcements',icon:faBullhorn},
 ];
+const NAV_ACCOUNTANT = [
+  {id:'dashboard',    label:'Dashboard',    icon:faHome},
+  {id:'fees',         label:'Fees',         icon:faMoneyBillWave},
+  {id:'financials',   label:'Income & Expenses', icon:faWallet},
+  {id:'contacts',     label:'Contacts',     icon:faAddressBook},
+  {id:'announcements',label:'Announcements',icon:faBullhorn},
+];
 
 function AppShell({user,onLogout}) {
   const [page,setPage]           = useState('dashboard');
   const [sidebarOpen,setSidebar] = useState(false);
+  const [showScrollTop,setShowScrollTop] = useState(false);
   const online = useOnline();
 
   const stu = useTable('students');
@@ -2008,6 +2257,8 @@ function AppShell({user,onLogout}) {
   const grd = useTable('grades');
   const fee = useTable('fees');
   const ann = useTable('announcements');
+  const contacts = useTable('contacts');
+  const financials = useTable('financials');
 
   const navItems = user.role==='admin' ? NAV_ADMIN : NAV_TEACHER;
   const current  = navItems.find(n=>n.id===page)||navItems[0];
@@ -2095,7 +2346,7 @@ function AppShell({user,onLogout}) {
         )}
 
         <div className="content">
-          {page==='dashboard'    &&<Dashboard     user={user} students={stu.data} teachers={tch.data} attendance={att.data} grades={grd.data} fees={fee.data} announcements={ann.data} profiles={prof.data} onNavigate={navigate}/>}
+          {page==='dashboard'    &&<Dashboard     user={user} students={stu.data} teachers={tch.data} attendance={att.data} grades={grd.data} fees={fee.data} announcements={ann.data} profiles={prof.data} contacts={contacts.data} financials={financials.data} onNavigate={navigate}/>}
           {page==='students'     &&<Students      students={stu.data} onAdd={stu.add} onEdit={stu.update} onDelete={stu.remove}/>}
           {page==='teachers'     &&<Teachers      teachers={tch.data} onAdd={tch.add} onEdit={tch.update} onDelete={tch.remove}/>}
           {page==='attendance'   &&<Attendance    user={user} students={stu.data} attendance={att.data} onRecord={att.upsertAtt}/>}
