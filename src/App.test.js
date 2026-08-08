@@ -45,3 +45,22 @@ test('shows quick actions and attention summary on the dashboard', () => {
   expect(screen.getByText('Needs Attention')).toBeInTheDocument();
   expect(screen.getByText(/1 overdue fee/i)).toBeInTheDocument();
 });
+
+test('shows recent activity insights on the dashboard', () => {
+  render(
+    <Dashboard
+      user={{ name: 'Admin User', email: 'admin@example.com', role: 'admin', user_id: 'u1' }}
+      students={[{ id: 's1', name: 'Amina', status: 'active', class: 'Primary 1' }]}
+      teachers={[]}
+      attendance={[{ date: '2026-08-02', status: 'present' }]}
+      grades={[{ id: 'g1', student_id: 's1', class: 'Primary 1', subject: 'Math', score: 18, max_score: 20, date: '2026-08-02' }]}
+      fees={[]}
+      announcements={[{ id: 'a1', title: 'School assembly', content: 'Assembly is at 8am', priority: 'normal', target_audience: 'all', created_at: '2026-08-02T08:00:00.000Z' }]}
+      profiles={[]}
+      onNavigate={() => {}}
+    />
+  );
+
+  expect(screen.getByText(/recent activity/i)).toBeInTheDocument();
+  expect(screen.getByText(/school assembly/i)).toBeInTheDocument();
+});
