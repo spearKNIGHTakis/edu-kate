@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -10,8 +10,10 @@ import {
   faInfoCircle, faPhone, faPrint, faLock, faUser, faEyeSlash, faEye,
   faArrowRight, faArrowLeft, faArrowUp, faStar, faRocket, faShieldAlt, faDatabase,
   faEnvelope, faBell, faCalculator, faAddressBook, faWallet
+  , faUtensils, faFileImport
 } from '@fortawesome/free-solid-svg-icons';
 import './App.css';
+import Papa from 'papaparse';
 import { shouldUseLiveSupabase, getSupabaseConfig } from './supabaseConfig';
 import { resolveLoginProfile, syncProfileAndTeacher } from './authHelpers';
 
@@ -261,6 +263,7 @@ function useTable(table) {
         return next;
       });
       toast('Added','success');
+      return ins?.[0] || null;
     } catch (err) {
       const offlineRow = { ...row, id: `offline-${uid()}`, created_at: new Date().toISOString() };
       setData(p => {
@@ -270,6 +273,7 @@ function useTable(table) {
       });
       mergeOfflineAction(table, { type: 'add', row: offlineRow });
       toast('Saved offline — will sync when online','info');
+      return offlineRow;
     }
   }, [online, table, toast]);
 
@@ -775,6 +779,10 @@ function LoginPage({onLogin,onRegister,onBack}) {
               <span className="rc-icon"><FontAwesomeIcon icon={faUserTie} style={{color:role==='teacher'?'var(--g700)':'var(--gray400)'}}/></span>
               <span>Teacher</span><small>Class access</small>
             </div>
+            <div className={`role-card${role==='accountant'?' active':''}`} onClick={()=>prefill('accountant')}>
+              <span className="rc-icon"><FontAwesomeIcon icon={faCalculator} style={{color:role==='accountant'?'var(--g700)':'var(--gray400)'}}/></span>
+              <span>Accountant</span><small>Financial access</small>
+            </div>
           </div>
 
           <div className="auth-divider">enter credentials</div>
@@ -922,6 +930,10 @@ function RegisterPage({onBack}) {
             <div className={`role-card${form.role==='teacher'?' active':''}`} onClick={()=>setForm(p=>({...p,role:'teacher'}))}>
               <span className="rc-icon"><FontAwesomeIcon icon={faUserTie} style={{color:form.role==='teacher'?'var(--g700)':'var(--gray400)'}}/></span>
               <span>Teacher</span><small>Class teacher</small>
+            </div>
+            <div className={`role-card${form.role==='accountant'?' active':''}`} onClick={()=>setForm(p=>({...p,role:'accountant'}))}>
+              <span className="rc-icon"><FontAwesomeIcon icon={faCalculator} style={{color:form.role==='accountant'?'var(--g700)':'var(--gray400)'}}/></span>
+              <span>Accountant</span><small>Financial admin</small>
             </div>
           </div>
 
@@ -1104,6 +1116,8 @@ export function Dashboard({user,students,teachers,attendance,grades,fees,announc
         {user.role==='admin'&&<>
           <div className="stat-card green"><div className="stat-card-icon"><FontAwesomeIcon icon={faGraduationCap}/></div><div className="stat-value">{active}</div><div className="stat-label">Active Students</div><div className="stat-change up">{students.length} total enrolled</div></div>
           <div className="stat-card blue"> <div className="stat-card-icon"><FontAwesomeIcon icon={faChalkboardTeacher}/></div><div className="stat-value">{teachers.length}</div><div className="stat-label">Teachers</div><div className="stat-change">{teachers.filter(t=>t.status==='active').length} active</div></div>
+          <div className="stat-card gold"><div className="stat-card-icon"><FontAwesomeIcon icon={faWallet}/></div><div className="stat-value" style={{fontSize:18}}>{fmtMoney(netBalance)}</div><div className="stat-label">Net Funds</div><div className="stat-change">{totalIncome?`${(totalIncome/Math.max(totalIncome,totalExpenses)*100).toFixed(0)}%`:'0%'}</div></div>
+          <div className="stat-card blue"><div className="stat-card-icon"><FontAwesomeIcon icon={faAddressBook}/></div><div className="stat-value">{contactCount}</div><div className="stat-label">Contacts</div><div className="stat-change">{contacts.length} total</div></div>
         </>}
         <div className="stat-card green"><div className="stat-card-icon"><FontAwesomeIcon icon={faCalendarCheck}/></div><div className="stat-value">{attRate}%</div><div className="stat-label">Today's Attendance</div><div className="stat-change">{present}/{todayAtt.length} present</div></div>
         <div className="stat-card purple"><div className="stat-card-icon"><FontAwesomeIcon icon={faChartLine}/></div><div className="stat-value">{avgScore}%</div><div className="stat-label">Average Grade</div><div className="stat-change">{grades.length} assessments</div></div>
@@ -1686,7 +1700,7 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
   });
   const exportRows=list.map(f=>({
     Student: students.find(st=>st.id===f.student_id)?.name || 'Unknown',
-    Class: students.find(st=>st.student_id===f.student_id)?.class || '—',
+    Class: students.find(st=>st.id===f.student_id)?.class || '—',
     FeeType: f.fee_type,
     Amount: fmtMoney(f.amount),
     Days: f.days || '—',
@@ -1793,7 +1807,12 @@ function Fees({students,fees,onAdd,onUpdate,onDelete}) {
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:14,marginTop:8}}>
               <div className="form-group"><label>Days *</label><input type="number" min="0" value={form.days} onChange={F('days')} placeholder="Days served"/></div>
               <div className="form-group"><label>Rate per Day (GH₵) *</label><input type="number" min="0" value={form.rate_per_day} onChange={F('rate_per_day')} placeholder="Rate per day"/></div>
-              <div className="form-group" style={{alignSelf:'end'}}><label>Total Canteen</label><div style={{padding:'11px 12px',borderRadius:'10px',border:'1.5px solid var(--gray300)',background:var(--gray50)}}>GH₵ {((Number(form.days)||0)*(Number(form.rate_per_day)||0)).toFixed(2)}</div></div>
+              <div className="form-group" style={{alignSelf:'end'}}>
+                <label>Total Canteen</label>
+                <div style={{padding:'11px 12px',borderRadius:'10px',border:'1.5px solid var(--gray300)',background:'var(--gray50)'}}>
+                  GH₵ {((Number(form.days)||0)*(Number(form.rate_per_day)||0)).toFixed(2)}
+                </div>
+              </div>
             </div>
           )}
           <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:16}}>
@@ -2163,10 +2182,22 @@ CREATE TABLE fees (
   student_id uuid REFERENCES students(id) ON DELETE CASCADE,
   amount numeric NOT NULL,
   fee_type text NOT NULL,
+  days int,
+  rate_per_day numeric,
   due_date date,
   paid_date date,
   status text DEFAULT 'pending',
   term text,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE canteen (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  student_id uuid REFERENCES students(id) ON DELETE CASCADE,
+  date date NOT NULL,
+  meal_type text DEFAULT 'Lunch',
+  rate_per_day numeric DEFAULT 10,
+  notes text,
   created_at timestamptz DEFAULT now()
 );
 
@@ -2177,6 +2208,32 @@ CREATE TABLE announcements (
   target_audience text DEFAULT 'all',
   priority text DEFAULT 'normal',
   created_by text,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE contacts (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  name text NOT NULL,
+  role text NOT NULL,
+  relation text,
+  class text,
+  phone text,
+  email text,
+  notes text,
+  status text DEFAULT 'active',
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE financials (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  record_type text NOT NULL,
+  category text NOT NULL,
+  student_id uuid REFERENCES students(id),
+  class text,
+  amount numeric NOT NULL,
+  date date,
+  term text,
+  description text,
   created_at timestamptz DEFAULT now()
 );`;
 
@@ -2216,6 +2273,125 @@ CREATE TABLE announcements (
 }
 
 // ═══════════════════════════════════════════
+// CANTEEN TRACKER
+// ═══════════════════════════════════════════
+function CanteenTracker({students,canteen,onAdd,onDelete,onGenerateFees}){
+  const [date,setDate]=useState(dateToday());
+  const [selected,setSelected]=useState({});
+  const [from,setFrom]=useState('');
+  const [to,setTo]=useState('');
+  const [rate,setRate]=useState(10);
+  const toggle=(id)=>setSelected(s=>({...s,[id]:!s[id]}));
+  const markForDate=()=>{
+    const toAdd = Object.keys(selected).filter(k=>selected[k]).map(student_id=>({student_id,date,notes:'canteen'}));
+    toAdd.forEach(r=>onAdd(r));
+    setSelected({});
+  };
+  const genFees=()=>{
+    if(!from||!to) return alert('Select from and to dates');
+    // compute days per student
+    const start = new Date(from); const end = new Date(to);
+    const daysMap = {};
+    canteen.forEach(rec=>{
+      const d=new Date(rec.date);
+      if(d>=start && d<=end){ daysMap[rec.student_id] = (daysMap[rec.student_id]||0)+1; }
+    });
+    const batch = Object.keys(daysMap).map(student_id=>({student_id,days:daysMap[student_id],rate_per_day:rate,term:'Term 1 2026'}));
+    onGenerateFees(batch);
+  };
+  return (
+    <div className="anim-up">
+      <div className="import-panel">
+        <h3>Canteen Daily Tracking</h3>
+        <div style={{display:'flex',gap:12,alignItems:'center',marginTop:8}}>
+          <input type="date" value={date} onChange={e=>setDate(e.target.value)} />
+          <button className="btn btn-primary btn-small" onClick={markForDate}><FontAwesomeIcon icon={faPlus}/> Mark Selected</button>
+          <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
+            <label style={{fontSize:13}}>Rate/day</label>
+            <input type="number" value={rate} min="0" onChange={e=>setRate(e.target.value)} style={{width:90}}/>
+          </div>
+        </div>
+        <div style={{marginTop:12}} className="canteen-grid">
+          {students.filter(s=>s.status!=='inactive').map(s=>{
+            const count = canteen.filter(c=>c.student_id===s.id).length;
+            return (
+              <div key={s.id} className="canteen-day">
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <strong>{s.name}</strong><label><input type="checkbox" checked={!!selected[s.id]} onChange={()=>toggle(s.id)}/></label>
+                </div>
+                <div style={{fontSize:13,color:'var(--gray500)'}}>{s.class}</div>
+                <div style={{marginTop:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div style={{fontWeight:700}}>Days: {count}</div>
+                  <div>
+                    <button className="btn btn-secondary btn-small" onClick={()=>onDelete(s.id)}>Clear</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="import-preview" style={{marginTop:12,display:'flex',gap:12,alignItems:'center'}}>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <label>From</label><input type="date" value={from} onChange={e=>setFrom(e.target.value)}/>
+            <label>To</label><input type="date" value={to} onChange={e=>setTo(e.target.value)}/>
+            <button className="btn btn-primary btn-small" onClick={genFees}><FontAwesomeIcon icon={faFileCsv}/> Generate Fees</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
+// IMPORT / EXPORT
+// ═══════════════════════════════════════════
+function ImportExport({students,fees,contacts,onImport,onUndo,lastImported}){
+  const [table,setTable]=useState('students');
+  const [preview,setPreview]=useState([]);
+  const onFile = e=>{
+    const f = e.target.files[0]; if(!f) return;
+    Papa.parse(f, {
+      header: true,
+      dynamicTyping: true,
+      skipEmptyLines: true,
+      complete: (results) => setPreview(results.data),
+      error: (err) => alert('CSV parse error: '+err.message),
+    });
+  };
+  const applyImport = ()=>{ if(!preview.length) return alert('No data to import'); onImport(table,preview); setPreview([]); };
+  return (
+    <div className="anim-up">
+      <div className="import-panel">
+        <h3>Import / Export</h3>
+        <div style={{display:'flex',gap:12,alignItems:'center',marginTop:8}}>
+          <select value={table} onChange={e=>setTable(e.target.value)}>
+            <option value="students">Students</option>
+            <option value="fees">Fees</option>
+            <option value="contacts">Contacts</option>
+          </select>
+          <input type="file" accept=".csv,text/csv" onChange={onFile}/>
+          <button className="btn btn-primary btn-small" onClick={applyImport}><FontAwesomeIcon icon={faFileCsv}/> Import</button>
+        </div>
+        {preview.length>0 && (
+          <div className="import-preview">
+            <div style={{fontSize:13,color:'var(--gray500)'}}>{preview.length} rows parsed — first row keys: {Object.keys(preview[0]).join(', ')}</div>
+            <div style={{marginTop:8}}>
+              <pre style={{maxHeight:160,overflow:'auto'}}>{JSON.stringify(preview.slice(0,10),null,2)}</pre>
+            </div>
+          </div>
+        )}
+        {lastImported && (
+          <div style={{marginTop:12,display:'flex',alignItems:'center',gap:8}}>
+            <div style={{fontSize:13,color:'var(--gray500)'}}>Last import: <strong>{lastImported.batchId}</strong> ({lastImported.ids.length} rows)</div>
+            <button className="btn btn-secondary btn-small" onClick={()=>onUndo && onUndo(table,lastImported.batchId)}>Undo Import</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
 // APP SHELL — with fully working mobile sidebar
 // ═══════════════════════════════════════════
 const NAV_ADMIN  = [
@@ -2225,8 +2401,10 @@ const NAV_ADMIN  = [
   {id:'attendance',   label:'Attendance',   icon:faCalendarCheck},
   {id:'grades',       label:'Grades',       icon:faChartBar},
   {id:'fees',         label:'Fees',         icon:faMoneyBillWave},
+  {id:'canteen',      label:'Canteen',      icon:faUtensils},
   {id:'financials',   label:'Income & Expenses', icon:faWallet},
   {id:'contacts',     label:'Contacts',     icon:faAddressBook},
+  {id:'imports',      label:'Import/Export', icon:faFileImport},
   {id:'announcements',label:'Announcements',icon:faBullhorn},
   {id:'settings',     label:'Settings',     icon:faCog},
 ];
@@ -2239,16 +2417,21 @@ const NAV_TEACHER = [
 const NAV_ACCOUNTANT = [
   {id:'dashboard',    label:'Dashboard',    icon:faHome},
   {id:'fees',         label:'Fees',         icon:faMoneyBillWave},
+  {id:'canteen',      label:'Canteen',      icon:faUtensils},
   {id:'financials',   label:'Income & Expenses', icon:faWallet},
   {id:'contacts',     label:'Contacts',     icon:faAddressBook},
+  {id:'imports',      label:'Import/Export', icon:faFileImport},
   {id:'announcements',label:'Announcements',icon:faBullhorn},
 ];
 
 function AppShell({user,onLogout}) {
   const [page,setPage]           = useState('dashboard');
+  const [lastImports,setLastImports] = useState({});
   const [sidebarOpen,setSidebar] = useState(false);
+  const toast = useToast();
   const [showScrollTop,setShowScrollTop] = useState(false);
   const online = useOnline();
+  const contentRef = useRef(null);
 
   const stu = useTable('students');
   const tch = useTable('teachers');
@@ -2256,11 +2439,12 @@ function AppShell({user,onLogout}) {
   const att = useTable('attendance');
   const grd = useTable('grades');
   const fee = useTable('fees');
+  const canteen = useTable('canteen');
   const ann = useTable('announcements');
   const contacts = useTable('contacts');
   const financials = useTable('financials');
 
-  const navItems = user.role==='admin' ? NAV_ADMIN : NAV_TEACHER;
+  const navItems = user.role==='admin' ? NAV_ADMIN : user.role==='accountant' ? NAV_ACCOUNTANT : NAV_TEACHER;
   const current  = navItems.find(n=>n.id===page)||navItems[0];
 
   const navigate = id => { setPage(id); setSidebar(false); };
@@ -2271,6 +2455,14 @@ function AppShell({user,onLogout}) {
     document.addEventListener('keydown',h);
     return ()=>document.removeEventListener('keydown',h);
   },[]);
+
+  useEffect(()=>{
+    const el = contentRef.current;
+    if (!el) return;
+    const onScroll = () => setShowScrollTop(el.scrollTop > 220);
+    el.addEventListener('scroll', onScroll);
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [contentRef]);
 
   return (
     <div className="app">
@@ -2326,7 +2518,7 @@ function AppShell({user,onLogout}) {
             </button>
             <div className="topbar-titles">
               <h2>{current.label}</h2>
-              <p>{user.role==='admin'?'Administrator':'Teacher'} · {user.name}</p>
+              <p>{user.role==='admin'?'Administrator':user.role==='accountant'?'Accountant':'Teacher'} · {user.name}</p>
             </div>
           </div>
           <div className="topbar-right" style={{alignItems:'center'}}>
@@ -2345,16 +2537,69 @@ function AppShell({user,onLogout}) {
           </div>
         )}
 
-        <div className="content">
+        <div className="content" ref={contentRef}>
           {page==='dashboard'    &&<Dashboard     user={user} students={stu.data} teachers={tch.data} attendance={att.data} grades={grd.data} fees={fee.data} announcements={ann.data} profiles={prof.data} contacts={contacts.data} financials={financials.data} onNavigate={navigate}/>}
           {page==='students'     &&<Students      students={stu.data} onAdd={stu.add} onEdit={stu.update} onDelete={stu.remove}/>}
+          {page==='contacts'     &&<Contacts      contacts={contacts.data} onAdd={contacts.add} onEdit={contacts.update} onDelete={contacts.remove}/>}
+          {page==='financials'   &&<Financials    user={user} students={stu.data} financials={financials.data} onAdd={financials.add} onUpdate={financials.update} onDelete={financials.remove}/>}
+                  {page==='canteen'      &&<CanteenTracker students={stu.data} canteen={canteen.data} onAdd={canteen.add} onDelete={canteen.remove} onGenerateFees={(batch)=>{
+                    // batch: [{student_id, days, rate_per_day, term}]
+                    batch.forEach(b=>{
+                      const payload = { student_id:b.student_id, fee_type:'Canteen', days:b.days, rate_per_day:b.rate_per_day, amount: String((Number(b.days)||0)*(Number(b.rate_per_day)||0)), term:b.term, status:'pending' };
+                      fee.add(payload);
+                    });
+                    toast('Canteen fees generated','success');
+                  }}/>} 
+          {page==='imports' && (
+            <ImportExport
+              students={stu.data}
+              fees={fee.data}
+              contacts={contacts.data}
+              lastImported={lastImports['students'] || lastImports['fees'] || lastImports['contacts']}
+              onImport={async (table,rows)=>{
+                const batchId = `import-${Date.now()}`;
+                const ids = [];
+                for (const r of rows) {
+                  const payload = { ...r, import_batch_id: batchId, created_at: new Date().toISOString() };
+                  if (table==='students') {
+                    const created = await stu.add(payload);
+                    if (created) ids.push(created.id || created);
+                  }
+                  if (table==='fees') {
+                    const created = await fee.add(payload);
+                    if (created) ids.push(created.id || created);
+                  }
+                  if (table==='contacts') {
+                    const created = await contacts.add(payload);
+                    if (created) ids.push(created.id || created);
+                  }
+                }
+                setLastImports(prev=>({...prev,[table]:{batchId,ids}}));
+                toast(`${rows.length} rows imported into ${table}`,'success');
+              }}
+              onUndo={async (table,batchId)=>{
+                const entry = lastImports[table];
+                if (!entry || entry.batchId !== batchId) return toast('Nothing to undo','info');
+                const ids = entry.ids || [];
+                for (const id of ids) {
+                  await (table==='students' ? stu.remove(id) : table==='fees' ? fee.remove(id) : contacts.remove(id));
+                }
+                setLastImports(prev=>{ const copy={...prev}; delete copy[table]; return copy; });
+                toast('Import undone','success');
+              }}
+            />
+          )}
+
           {page==='teachers'     &&<Teachers      teachers={tch.data} onAdd={tch.add} onEdit={tch.update} onDelete={tch.remove}/>}
           {page==='attendance'   &&<Attendance    user={user} students={stu.data} attendance={att.data} onRecord={att.upsertAtt}/>}
           {page==='grades'       &&<Grades        user={user} students={stu.data} grades={grd.data} onAdd={grd.add} onDelete={grd.remove}/>}
           {page==='fees'         &&<Fees          students={stu.data} fees={fee.data} onAdd={fee.add} onUpdate={fee.update} onDelete={fee.remove}/>}
           {page==='announcements'&&<Announcements user={user} announcements={ann.data} onAdd={ann.add} onDelete={ann.remove}/>}
           {page==='settings'     &&<Settings/>}
-        </div>
+          </div>
+          <button className={`scroll-top${showScrollTop ? ' show' : ''}`} onClick={()=>contentRef.current?.scrollTo({top:0,behavior:'smooth'})} title="Scroll to top">
+            <FontAwesomeIcon icon={faArrowUp}/>
+          </button>
       </main>
     </div>
   );
